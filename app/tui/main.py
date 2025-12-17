@@ -11,6 +11,7 @@ sys.path.append(parent_dir)
 
 from app.workers.scanner import run_scanner
 from app.database.models import ScanMission, FileRecord, engine
+from app.database.report import generate_report
 from sqlmodel import Session, select, func
 
 from textual.app import App, ComposeResult
@@ -24,7 +25,6 @@ class SentryHeader(Static):
         yield Label("● SYSTEM ONLINE", id="status")
 
 class SelectionScreen(Screen):
-    """Screen 1: The Mission Planner."""
     selected_paths = []
 
     def compose(self) -> ComposeResult:
@@ -34,22 +34,26 @@ class SelectionScreen(Screen):
             Vertical(
                 Label("1. Navigate & Select Folders/Drives:", classes="sub-header"),
                 DirectoryTree("/", id="file-browser"), 
-                Button("Add Selected Path to Mission", variant="primary", id="btn_add"),
+                Button("Add Selected Path", variant="primary", id="btn_add"),
                 classes="left-pane"
             ),
             Vertical(
                 Label("2. Mission Targets:", classes="sub-header"),
                 ListView(id="target-list"),
-                Button("CLEAR LIST", variant="error", id="btn_clear"),
+                Button("CLEAR LIST", variant="warning", id="btn_clear"),
                 classes="right-pane"
             ),
             classes="main-area"
         )
         
-        yield Button("INITIATE SCAN PROTOCOL >>", variant="success", id="btn_start")
+        yield Horizontal(
+            Button("EXIT SYSTEM", variant="error", id="btn_exit_app"),
+            Button("INITIATE SCAN PROTOCOL >>", variant="success", id="btn_start"),
+            classes="bottom-row"
+        )
 
     def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
-        pass # Just highlight
+        pass 
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_add":
@@ -75,16 +79,20 @@ class SelectionScreen(Screen):
                 mission_id = mission.id
             
             self.app.push_screen(DashboardScreen(mission_id=mission_id, targets=self.selected_paths))
+            
+        elif event.button.id == "btn_exit_app":
+            self.app.exit()
 
 class DashboardScreen(Screen):
-    """Screen 2: The Live Dashboard."""
+    """Screen 2: The Live Dashboard with Heartbeat Animation."""
     
     def __init__(self, mission_id, targets):
         super().__init__()
         self.mission_id = mission_id
         self.targets = targets
         self.worker_process = None
-        self.last_logged_id = -1 # Memory to prevent repeating log lines
+        self.last_logged_id = -1 
+        self.anim_tick = 0 
 
     def compose(self) -> ComposeResult:
         yield SentryHeader()
@@ -96,15 +104,15 @@ class DashboardScreen(Screen):
                 classes="panel-log"
             ),
             Vertical(
-                Label("CPU HASHING ENGINE", id="cpu-status"),
-                # We set total=100 so we can jump to 100% when done. 
-                # While running, we will treat it as indeterminate.
-                ProgressBar(total=100, show_eta=False, id="cpu-progress"), 
+                Label("INITIALIZING ENGINE...", id="cpu-status"),
+                # show_percentage=False hides the 0%
+                ProgressBar(total=None, show_eta=False, show_percentage=False, id="cpu-progress"), 
                 Label("Files Processed: 0", id="file-counter"),
                 classes="panel"
             ),
             Horizontal(
-                Button("RETURN TO MENU", variant="primary", id="btn_return", disabled=True),
+                Button("GENERATE REPORT", variant="primary", id="btn_report", disabled=True),
+                Button("RETURN TO MENU", variant="default", id="btn_return", disabled=True),
                 Button("ABORT MISSION", variant="error", id="btn_quit"),
                 classes="control-row"
             ),
@@ -116,8 +124,8 @@ class DashboardScreen(Screen):
         self.worker_process = multiprocessing.Process(target=run_scanner, args=(self.mission_id,))
         self.worker_process.start()
         
-        self.query_one("#cpu-status").update(f"CPU HASHING ENGINE: PID {self.worker_process.pid} RUNNING")
         self.query_one("#live-log").write_line(f"[{datetime.now().time()}] Subroutine launched...")
+        self.query_one("#cpu-progress").update(total=None) # Start indefinite
         
         self.set_interval(0.5, self.monitor_progress)
 
@@ -130,20 +138,26 @@ class DashboardScreen(Screen):
 
                 # 2. Check for Completion
                 mission = session.get(ScanMission, self.mission_id)
+                
                 if mission.status == "COMPLETED":
-                    # Force Bar to 100%
-                    bar = self.query_one("#cpu-progress")
-                    bar.update(progress=100)
-                    
+                    # --- FINISHED STATE ---
+                    self.query_one("#cpu-progress").update(total=100, progress=100)
                     self.query_one("#mission-status-label").update(f"MISSION #{self.mission_id} COMPLETE")
                     self.query_one("#mission-status-label").styles.background = "#008800"
-                    self.query_one("#cpu-status").update("ENGINE STANDBY - JOB DONE")
                     
-                    # Enable the "Return" button
+                    self.query_one("#cpu-status").update("100% SCAN COMPLETE • ENGINE STANDBY")
+                    
                     self.query_one("#btn_return").disabled = False
-                    self.query_one("#btn_return").variant = "success"
+                    self.query_one("#btn_report").disabled = False
+                    self.query_one("#btn_quit").display = False
 
-                # 3. Update Log (Smartly)
+                else:
+                    # --- ACTIVE ANIMATION STATE ---
+                    dots = "." * ((self.anim_tick % 3) + 1) 
+                    self.anim_tick += 1
+                    self.query_one("#cpu-status").update(f"CPU HASHING ENGINE RUNNING {dots}")
+
+                # 3. Update Log
                 last_file = session.exec(
                     select(FileRecord)
                     .where(FileRecord.mission_id == self.mission_id)
@@ -163,8 +177,15 @@ class DashboardScreen(Screen):
             if self.worker_process and self.worker_process.is_alive():
                 self.worker_process.terminate()
             self.app.exit()
+            
         elif event.button.id == "btn_return":
-             self.app.pop_screen() # Go back to main menu
+             self.app.pop_screen() 
+             
+        elif event.button.id == "btn_report":
+            filename = generate_report()
+            self.query_one("#live-log").write_line(f"SUCCESS: Report saved to {filename}")
+            self.query_one("#btn_report").disabled = True 
+            self.query_one("#btn_report").label = "REPORT SAVED"
 
 class SentryApp(App):
     CSS = """
@@ -188,6 +209,8 @@ class SentryApp(App):
     .status-bar { background: #004400; color: white; text-align: center; padding: 1; width: 100%; }
     #file-counter { text-align: center; text-style: bold; margin-top: 1; }
     .control-row { align: center middle; height: 3; margin-top: 1; }
+    .bottom-row { align: center middle; height: 3; margin: 1; }
+    #btn_exit_app { margin-right: 2; }
     """
 
     def on_mount(self) -> None:
