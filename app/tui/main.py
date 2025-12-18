@@ -140,5 +140,15 @@ class SentryApp(App):
         self.query_one("#status_panel").update("✅ Scan Complete.")
 
 if __name__ == "__main__":
-    app = SentryApp()
-    app.run()
+    # Start the background Dashboard (FastAPI) automatically
+    import threading
+    import uvicorn
+    from app.server import app as web_app
+    
+    # Run the web server in a separate thread so it doesn't block the TUI
+    threading.Thread(target=lambda: uvicorn.run(web_app, host="0.0.0.0", port=8000), daemon=True).start()
+    
+    # Launch the TUI
+    ui = SentryApp()
+    ui.run()
+

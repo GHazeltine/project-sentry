@@ -40,4 +40,5 @@ EXPOSE 8000
 # 3. Launch Command
 # Note: We keep server.py as the CMD so the container stays alive, 
 # but you will 'exec' into it to use the TUI.
-CMD ["python", "server.py"]
+# Launch the unified interface
+CMD ["python", "app/tui/main.py"]
