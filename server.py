@@ -6,20 +6,39 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 # --- CONNECTING TO YOUR v2.0 BACKEND ---
-from app.core.drive_manager import DriveManager
-from app.core.scanner import Scanner
-from app.core.reaper import Reaper
-from app.core.janitor import Janitor
+# We use absolute imports to avoid Docker pathing issues
+try:
+    from app.core.drive_manager import DriveManager
+    from app.workers.scanner import run_scanner
+    from app.core.janitor import Janitor
+except ImportError:
+    from core.drive_manager import DriveManager
+    from workers.scanner import run_scanner
+    from core.janitor import Janitor
+
+# 1. SETUP ABSOLUTE PATHING
+# This prevents the "Directory does not exist" crash
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI()
 
-# Setup folders for the web interface
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+# Mount Static Files (Looking in root first, then app/static)
+static_path = os.path.join(BASE_DIR, "static")
+if not os.path.exists(static_path):
+    static_path = os.path.join(BASE_DIR, "app", "static")
 
-# Initialize the v2.0 Engines
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# Setup Templates (Looking in app/templates)
+templates_path = os.path.join(BASE_DIR, "app", "templates")
+if not os.path.exists(templates_path):
+    templates_path = os.path.join(BASE_DIR, "templates")
+
+templates = Jinja2Templates(directory=templates_path)
+
+# Initialize Engines
 dm = DriveManager()
-scanner = Scanner()
 janitor = Janitor()
 
 @app.get("/")
@@ -35,66 +54,14 @@ async def get_drives():
 
 @app.post("/api/scan")
 async def start_scan(request: Request):
-    """
-    Button: 'INITIATE SCAN'
-    Action: Triggers Module B (Scanner)
-    """
+    """Triggers the Scanner Engine"""
     data = await request.json()
-    gold_path = data.get('gold')
     targets = data.get('targets', [])
-
-    print(f"🚀 API STARTING SCAN: Gold={gold_path}, Targets={targets}")
     
-    # 1. Scan Gold (Master)
-    scanner.scan_directory(gold_path, tag="MASTER")
-    
-    # 2. Scan Targets
-    for t in targets:
-        scanner.scan_directory(t, tag="TARGET")
-        
+    # Offload to the verified scanner worker
+    run_scanner(targets)
     return {"status": "Scan Complete", "message": "Indexing finished."}
 
-@app.get("/api/analyze")
-async def analyze_duplicates(gold_path: str):
-    """
-    Button: 'ANALYZE DUPLICATES'
-    Action: Triggers Module D (Reaper Analysis)
-    """
-    reaper = Reaper(master_path=gold_path)
-    duplicates = reaper.analyze()
-    
-    # Calculate stats for the UI
-    total_size = sum([os.path.getsize(p) for p in duplicates]) / (1024*1024*1024)
-    
-    return {
-        "count": len(duplicates),
-        "size_gb": round(total_size, 2),
-        "files": duplicates[:50] # Send first 50 for preview
-    }
-
-@app.post("/api/clean")
-async def execute_clean(request: Request):
-    """
-    Button: 'DESTROY' (The Big Red Button)
-    Action: Triggers Module D (Execute) + Module E (Janitor)
-    """
-    data = await request.json()
-    gold_path = data.get('gold')
-    targets = data.get('targets', [])
-    
-    # 1. Reaper Execution
-    reaper = Reaper(master_path=gold_path)
-    duplicates = reaper.analyze()
-    reaper.execute(duplicates)
-    
-    # 2. Ghostbuster (Janitor)
-    cleaned_stats = []
-    for t in targets:
-        stats = janitor.clean(t)
-        cleaned_stats.append(stats)
-        
-    return {"status": "Clean Complete", "janitor_stats": cleaned_stats}
-
 if __name__ == "__main__":
-    # Run on Port 8000 (Standard for K3s/Docker)
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+    # Unified Launch configuration
+    uvicorn.run(app, host="0.0.0.0", port=8000)
