@@ -143,6 +143,9 @@ if __name__ == "__main__":
     # Start the background Dashboard (FastAPI) automatically
     import threading
     import uvicorn
+try:
+    from server import app as web_app
+except ImportError:
     from app.server import app as web_app
     
     # Run the web server in a separate thread so it doesn't block the TUI
