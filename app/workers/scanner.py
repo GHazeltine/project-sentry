@@ -1,5 +1,6 @@
 import os
 import hashlib
+from typing import List
 from sqlmodel import Session, select
 from app.database.models import FileRecord, engine
 
@@ -20,48 +21,53 @@ def calculate_md5(file_path, block_size=65536):
                 hasher.update(buf)
         return hasher.hexdigest()
     except Exception as e:
-        print(f"[SCAN ERROR] Could not hash {file_path}: {e}")
+        # Log locked files but don't crash
+        # print(f"[LOCKED] Could not read {file_path}")
         return None
 
-def run_scanner(root_directory: str):
+def run_scanner(target_paths: List[str]):
     """
-    Scans a directory recursively.
-    RESUME CAPABILITY: Checks DB before hashing.
+    Scans a LIST of directories recursively.
     """
-    print(f"--- STARTING SCAN: {root_directory} ---")
+    print(f"--- STARTING MULTI-TARGET SCAN ---")
+    print(f"Targets: {target_paths}")
     
     with Session(engine) as session:
-        for subdir, dirs, files in os.walk(root_directory):
-            # 1. Filter Ignored Directories (In-place modification)
-            dirs[:] = [d for d in dirs if d not in IGNORE_LIST]
+        for root_directory in target_paths:
+            if not os.path.exists(root_directory):
+                print(f"[ERROR] Path not found: {root_directory}")
+                continue
 
-            for filename in files:
-                filepath = os.path.join(subdir, filename)
+            for subdir, dirs, files in os.walk(root_directory):
+                # 1. Filter Ignored Directories
+                dirs[:] = [d for d in dirs if d not in IGNORE_LIST]
 
-                # 2. RESUME LOGIC: Check if file is already in DB
-                existing = session.exec(select(FileRecord).where(FileRecord.path == filepath)).first()
-                if existing:
-                    # print(f"[SKIP] Already scanned: {filename}")
-                    continue
+                for filename in files:
+                    filepath = os.path.join(subdir, filename)
 
-                # 3. Process New File
-                try:
-                    file_size = os.path.getsize(filepath)
-                    file_hash = calculate_md5(filepath)
+                    # 2. RESUME LOGIC: Check DB first
+                    existing = session.exec(select(FileRecord).where(FileRecord.path == filepath)).first()
+                    if existing:
+                        continue
 
-                    if file_hash:
-                        new_record = FileRecord(
-                            filename=filename,
-                            path=filepath,
-                            size_bytes=file_size,
-                            hash=file_hash
-                        )
-                        session.add(new_record)
-                        session.commit()
-                        print(f"[+] Indexed: {filename}")
+                    # 3. Process New File
+                    try:
+                        file_size = os.path.getsize(filepath)
+                        file_hash = calculate_md5(filepath)
 
-                except OSError as e:
-                    print(f"[LOCKED] Skipping busy file: {filepath}")
-                    continue
+                        if file_hash:
+                            new_record = FileRecord(
+                                filename=filename,
+                                path=filepath,
+                                size_bytes=file_size,
+                                hash=file_hash
+                            )
+                            session.add(new_record)
+                            session.commit()
+                            print(f"[+] Indexed: {filename}")
+
+                    except OSError:
+                        # Skip locked/system files quietly
+                        continue
 
     print("--- SCAN COMPLETE ---")
