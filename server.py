@@ -14,7 +14,7 @@ from app.core.janitor import Janitor
 app = FastAPI()
 
 # Setup folders for the web interface
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 # Initialize the v2.0 Engines
