@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT SENTRY | Command Center</title>
+    <style>
+        :root { --neon: #00ff41; --dark: #0d1117; --panel: #161b22; --danger: #ff3333; }
+        body { background: var(--dark); color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }
+        
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: var(--neon); text-shadow: 0 0 10px rgba(0,255,65,0.3); border-bottom: 2px solid var(--panel); padding-bottom: 10px; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: var(--panel); border: 1px solid #30363d; padding: 20px; border-radius: 6px; }
+        
+        select, button { width: 100%; padding: 10px; margin-top: 10px; background: #21262d; color: white; border: 1px solid #30363d; cursor: pointer; }
+        button:hover { background: #30363d; }
+        
+        .btn-action { background: var(--neon); color: black; font-weight: bold; }
+        .btn-danger { background: var(--danger); color: white; font-weight: bold; }
+        
+        #console-output { background: black; color: var(--neon); padding: 15px; height: 300px; overflow-y: auto; border: 1px solid #30363d; margin-top: 20px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🛡️ PROJECT SENTRY // COMMAND</h1>
+    
+    <div class="grid">
+        <div class="card">
+            <h3>💾 HARDWARE CONFIG</h3>
+            
+            <label>1. Select GOLD MASTER (Protected):</label>
+            <select id="goldSelect">
+                {% for drive in drives %}
+                <option value="{{ drive.mountpoint }}">{{ drive.label }} ({{ drive.size }})</option>
+                {% endfor %}
+            </select>
+            
+            <label style="margin-top:15px; display:block;">2. Select TARGET (To Clean):</label>
+            <select id="targetSelect" multiple style="height: 100px;">
+                {% for drive in drives %}
+                <option value="{{ drive.mountpoint }}">{{ drive.label }} ({{ drive.size }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="card">
+            <h3>⚡ OPERATIONS</h3>
+            <button onclick="startScan()" class="btn-action">🔍 INITIATE SCAN</button>
+            <button onclick="analyze()" id="btn-analyze" disabled>💀 ANALYZE DUPLICATES</button>
+            <button onclick="executeClean()" id="btn-destroy" class="btn-danger" disabled>⚠️ EXECUTE REAPER</button>
+        </div>
+    </div>
+
+    <div id="console-output">
+        > SYSTEM ONLINE.
+        > WAITING FOR USER INPUT...
+    </div>
+</div>
+
+<script>
+    function log(msg) {
+        const box = document.getElementById('console-output');
+        box.innerHTML += `<div>> ${msg}</div>`;
+        box.scrollTop = box.scrollHeight;
+    }
+
+    async function startScan() {
+        const gold = document.getElementById('goldSelect').value;
+        const targets = Array.from(document.getElementById('targetSelect').selectedOptions).map(o => o.value);
+        
+        if(targets.length === 0) { alert("Select at least one Target drive!"); return; }
+        
+        log("🚀 INITIALIZING SCANNER...");
+        document.body.style.cursor = "wait";
+        
+        const response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ gold, targets })
+        });
+        
+        const result = await response.json();
+        log(`✅ ${result.message}`);
+        document.getElementById('btn-analyze').disabled = false;
+        document.body.style.cursor = "default";
+    }
+
+    async function analyze() {
+        const gold = document.getElementById('goldSelect').value;
+        log("💀 ANALYZING DATABASE...");
+        
+        const response = await fetch(`/api/analyze?gold_path=${encodeURIComponent(gold)}`);
+        const data = await response.json();
+        
+        log(`⚠️  FOUND: ${data.count} Duplicates`);
+        log(`💾  POTENTIAL RECLAIM: ${data.size_gb} GB`);
+        
+        if(data.count > 0) {
+            log("Sample Duplicates:");
+            data.files.forEach(f => log(`   - ${f}`));
+            document.getElementById('btn-destroy').disabled = false;
+        } else {
+            log("✅ System Clean. No duplicates found.");
+        }
+    }
+
+    async function executeClean() {
+        if(!confirm("⚠️ WARNING: This will PERMANENTLY DELETE files from the Target drives. Confirm?")) return;
+        
+        const gold = document.getElementById('goldSelect').value;
+        const targets = Array.from(document.getElementById('targetSelect').selectedOptions).map(o => o.value);
+        
+        log("⚡ EXECUTING REAPER PROTOCOL...");
+        
+        const response = await fetch('/api/clean', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ gold, targets })
+        });
+        
+        const result = await response.json();
+        log("✅ MISSION COMPLETE.");
+        log("✨ Janitor Report: " + JSON.stringify(result.janitor_stats));
+    }
+</script>
+
+</body>
+</html>
