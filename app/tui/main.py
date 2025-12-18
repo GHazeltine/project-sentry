@@ -140,18 +140,34 @@ class SentryApp(App):
         self.query_one("#status_panel").update("✅ Scan Complete.")
 
 if __name__ == "__main__":
-    # Start the background Dashboard (FastAPI) automatically
     import threading
     import uvicorn
-try:
-    from server import app as web_app
-except ImportError:
-    from app.server import app as web_app
-    
-    # Run the web server in a separate thread so it doesn't block the TUI
-    threading.Thread(target=lambda: uvicorn.run(web_app, host="0.0.0.0", port=8000), daemon=True).start()
-    
-    # Launch the TUI
-    ui = SentryApp()
-    ui.run()
+    import sys
+    import os
 
+    # 1. FIX THE PATHS so we can find server.py
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # /app/app/tui
+    ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../..")) # /app
+    sys.path.append(ROOT_DIR)
+
+    # 2. START THE WEB SERVER in a background thread
+    def start_web_server():
+        try:
+            # Try to import from the root or the app folder
+            try:
+                from server import app as web_app
+            except ImportError:
+                from app.server import app as web_app
+            
+            print("🌍 Starting Dashboard on http://0.0.0.0:8000")
+            uvicorn.run(web_app, host="0.0.0.0", port=8000, log_level="info")
+        except Exception as e:
+            print(f"❌ WEB SERVER FAILED: {e}")
+
+    # Launch background thread
+    daemon = threading.Thread(target=start_web_server, daemon=True)
+    daemon.start()
+
+    # 3. START THE TUI
+    app = SentryApp()
+    app.run()
