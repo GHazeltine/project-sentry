@@ -79,3 +79,43 @@ docker run -d \
   -v /dev:/dev \
   -v /media:/media \
   project-sentry:v1
+
+Access the dashboard at http://localhost:8000
+
+Option B: Python Local (Dev Mode)
+Bash
+
+# 1. Clone & Install
+git clone [https://github.com/YOUR_USERNAME/project-sentry.git](https://github.com/YOUR_USERNAME/project-sentry.git)
+cd project-sentry
+pip install -r requirements.txt
+
+# 2. Run Server
+sudo python server.py
+🧩 Architecture
+Code snippet
+
+graph TD
+    A[Web Dashboard] -->|HTTP/JSON| B(FastAPI Server)
+    B --> C{Controller}
+    C -->|Detect| D[Drive Manager]
+    C -->|Index| E[Scanner]
+    E -->|Exact Match| F[CPU: BLAKE2b]
+    E -->|Visual Match| G[NPU: Hailo-8L]
+    C -->|Cleanup| H[Reaper & Janitor]
+    H -->|Delete| I[(Target Drives)]
+    I -.->|Read Only| J[(Gold Master)]
+🗺️ Roadmap
+[x] Core Deduplication (Scanner/Reaper)
+
+[x] Web Interface (FastAPI/HTML)
+
+[x] Hardware Auto-Fix (HFS+/NTFS)
+
+[x] AI Integration (Hailo-8L Hooks)
+
+[ ] Cluster Mode: Distribute scanning across multiple Pi nodes.
+
+[ ] Semantic Search: "Find all photos of a dog" using the visual vector database.
+
+Project Sentry is an open-source initiative. Use with caution. Always backup data before running batch deletion tools.
