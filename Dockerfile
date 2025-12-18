@@ -4,11 +4,13 @@ WORKDIR /app
 
 # 1. Install System Dependencies
 # 'libgl1' fixes the graphics error.
-# 'libcamera-tools' & 'v4l-utils' allow access to the IMX500 and USB Webcams.
-# 'pciutils' & 'usbutils' allow the code to scan for Hardware (Hailo/NVIDIA).
+# 'libcamera-tools' & 'v4l-utils' for IMX500 and USB Webcams.
+# 'cifs-utils' allows the container to mount Windows/Network drives.
+# 'pciutils' & 'usbutils' for hardware scanning (Hailo/NVIDIA).
 RUN apt-get update && apt-get install -y \
     util-linux \
     ntfs-3g \
+    cifs-utils \
     libgl1 \
     libglib2.0-0 \
     libcamera-tools \
@@ -18,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Install Python Dependencies
-# 'opencv-python-headless' is the standard for visual processing on any OS.
+# Added 'textual' for the TUI and 'sqlmodel' for the resume-capable database.
 RUN pip install --no-cache-dir \
     fastapi \
     uvicorn \
@@ -26,11 +28,16 @@ RUN pip install --no-cache-dir \
     jinja2 \
     Pillow \
     numpy \
-    opencv-python-headless
+    opencv-python-headless \
+    textual \
+    sqlmodel
 
 COPY . .
 
+# Expose the Dashboard port
 EXPOSE 8000
 
 # 3. Launch Command
+# Note: We keep server.py as the CMD so the container stays alive, 
+# but you will 'exec' into it to use the TUI.
 CMD ["python", "server.py"]
