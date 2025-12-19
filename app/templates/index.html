@@ -111,33 +111,30 @@
     return r.json();
   }
 
-  // --- HARDWARE DETECTION ---
+  // --- HARDWARE ---
   async function loadDrives() {
     const select = document.getElementById('driveJump');
     select.innerHTML = '<option value="NONE">-- SELECT HARDWARE --</option>';
     
-    // 1. Add Special Roots
+    // Special Roots
     const specials = [
       { name: "💻 HOST COMPUTER (OS Drive)", path: "/host_fs" },
       { name: "🔌 USB DRIVES (/media)", path: "/media" },
       { name: "🌐 NETWORK MOUNTS", path: "/mnt/sentry" }
     ];
-    
-    specials.forEach(d => {
-      select.add(new Option(d.name, d.path));
-    });
+    specials.forEach(d => select.add(new Option(d.name, d.path)));
 
-    // 2. Fetch Real Hardware
+    // Real Hardware
     try {
       const drives = await api('/api/drives');
       if (Array.isArray(drives)) {
-        select.add(new Option("--- DETECTED PHYSICAL DRIVES ---", "NONE", true, true));
+        select.add(new Option("--- PHYSICAL DRIVES ---", "NONE", true, true));
         drives.forEach(d => {
             if (d.mountpoint) {
-                // If mounted, give direct access
-                select.add(new Option(`💾 ${d.label || d.name} (${d.size})`, d.mountpoint));
+                // Map host mountpoints to container path
+                const path = d.mountpoint === "/" ? "/host_fs" : `/host_fs${d.mountpoint}`;
+                select.add(new Option(`💾 ${d.label || d.name} (${d.size})`, path));
             } else {
-                // If unmounted, show but mark as such
                 select.add(new Option(`⚠️ ${d.label || d.name} (Unmounted)`, "NONE", true, true));
             }
         });
@@ -145,27 +142,44 @@
     } catch (e) { console.error("Drive detect fail", e); }
   }
 
-  // --- TREE VIEW ---
+  // --- TREE VIEW (FIXED) ---
   async function initTree(rootPath) {
     if (rootPath === "NONE") return;
     currentRoot = rootPath;
     document.getElementById('currentRoot').innerText = "Viewing: " + rootPath;
-    document.getElementById('treeRoot').innerHTML = "Loading...";
-    await loadFolder(rootPath, document.getElementById('treeRoot'));
+    const container = document.getElementById('treeRoot');
+    
+    container.innerHTML = "Loading...";
+    container.innerHTML = ''; 
+
+    // 1. ADD THE "SELECT WHOLE DRIVE" HEADER NODE
+    const rootNode = document.createElement('div');
+    rootNode.className = 'tree-item';
+    rootNode.style.marginBottom = "5px";
+    rootNode.style.borderBottom = "1px solid #333";
+    
+    const rootRow = document.createElement('div');
+    rootRow.className = 'tree-row';
+    rootRow.innerHTML = `<span class="caret">▼</span><span class="icon">💾</span> <span style="font-weight:bold; color:var(--neon);">[SELECT ENTIRE DRIVE]</span>`;
+    rootRow.onclick = () => selectNode(rootRow, rootPath); // <--- This allows selecting the parent
+    
+    rootNode.appendChild(rootRow);
+    container.appendChild(rootNode);
+
+    // 2. Load Children
+    await loadFolder(rootPath, container);
   }
 
   function refreshTree() { initTree(currentRoot); }
 
   async function loadFolder(path, container) {
     const res = await api(`/api/fs/list?path=${encodeURIComponent(path)}`);
-    container.innerHTML = ''; 
-
     if (res.error) {
-        container.innerHTML = `<div style="color:red; padding:5px;">Error: ${res.error}</div>`;
+        container.innerHTML += `<div style="color:red; padding:5px;">Error: ${res.error}</div>`;
         return;
     }
     if (!res.entries || res.entries.length === 0) {
-        container.innerHTML = `<div style="color:gray; padding-left:20px;">(Empty)</div>`;
+        container.innerHTML += `<div style="color:gray; padding-left:20px;">(Empty)</div>`;
         return;
     }
 
@@ -220,9 +234,9 @@
     selectedPath = path;
   }
 
-  // --- SELECTIONS & ACTIONS ---
+  // --- ACTIONS ---
   function addSelection(type) {
-    if (!selectedPath) return alert("Select a folder first.");
+    if (!selectedPath) return alert("Select a folder or [ENTIRE DRIVE] first.");
     (type === 'gold' ? goldPaths : targetPaths).add(selectedPath);
     renderLists();
   }
