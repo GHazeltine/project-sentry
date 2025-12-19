@@ -39,12 +39,26 @@
                 {% endfor %}
             </select>
             
-            <label style="margin-top:15px; display:block;">2. Select TARGET (To Clean):</label>
-            <select id="targetSelect" multiple style="height: 100px;">
-                {% for drive in drives %}
-                <option value="{{ drive.mountpoint }}">{{ drive.label }} ({{ drive.size }})</option>
-                {% endfor %}
-            </select>
+            <label style="margin-top:15px; display:block;">2. Select TARGET FOLDERS (From /mnt/sentry):</label>
+
+<div style="display:flex; gap:10px; margin-top:10px;">
+  <div style="flex:1;">
+    <div style="font-size:0.9em; color:#8b949e;">Browser</div>
+    <div id="fsPath" style="margin:6px 0; font-size:0.9em; color:#c9d1d9;">/mnt/sentry</div>
+    <select id="fsBrowser" size="10" style="height: 220px;"></select>
+    <button onclick="fsUp()">⬆️ Up</button>
+    <button onclick="fsEnter()">➡️ Enter Folder</button>
+    <button onclick="addTarget()">➕ Add Selected Folder</button>
+  </div>
+
+  <div style="flex:1;">
+    <div style="font-size:0.9em; color:#8b949e;">Selected Targets</div>
+    <select id="targetSelect" multiple style="height: 280px;"></select>
+    <button onclick="removeTarget()" class="btn-danger">➖ Remove Selected</button>
+    <button onclick="clearTargets()">🧹 Clear Targets</button>
+  </div>
+</div>
+
         </div>
 
         <div class="card">
@@ -68,9 +82,88 @@
         box.scrollTop = box.scrollHeight;
     }
 
+let currentPath = "/mnt/sentry";
+
+async function fsLoad(path) {
+    currentPath = path;
+    document.getElementById("fsPath").innerText = currentPath;
+
+    const resp = await fetch(`/api/fs/list?path=${encodeURIComponent(currentPath)}`);
+    if (!resp.ok) {
+        log(`❌ FS ERROR: ${resp.status}`);
+        return;
+    }
+    const data = await resp.json();
+
+    const browser = document.getElementById("fsBrowser");
+    browser.innerHTML = "";
+
+    // Add directories only (skip files for target selection)
+    data.entries
+      .filter(e => e.type === "dir")
+      .forEach(e => {
+          const opt = document.createElement("option");
+          opt.value = e.path;
+          opt.textContent = e.name;
+          browser.appendChild(opt);
+      });
+}
+
+function fsUp() {
+    if (currentPath === "/mnt/sentry") {
+        log("At root of allowed browsing.");
+        return;
+    }
+    const parent = currentPath.split("/").slice(0, -1).join("/") || "/mnt/sentry";
+    fsLoad(parent);
+}
+
+function fsEnter() {
+    const browser = document.getElementById("fsBrowser");
+    const sel = browser.selectedOptions[0];
+    if (!sel) { alert("Select a folder to enter."); return; }
+    fsLoad(sel.value);
+}
+
+function addTarget() {
+    const browser = document.getElementById("fsBrowser");
+    const sel = browser.selectedOptions[0];
+    if (!sel) { alert("Select a folder to add."); return; }
+
+    const targetSelect = document.getElementById("targetSelect");
+    const exists = Array.from(targetSelect.options).some(o => o.value === sel.value);
+    if (exists) { log("Target already added."); return; }
+
+    const opt = document.createElement("option");
+    opt.value = sel.value;
+    opt.textContent = sel.value;
+    opt.selected = true;
+    targetSelect.appendChild(opt);
+
+    log(`✅ Added target: ${sel.value}`);
+}
+
+function removeTarget() {
+    const targetSelect = document.getElementById("targetSelect");
+    const selected = Array.from(targetSelect.selectedOptions);
+    if (selected.length === 0) { alert("Select target(s) to remove."); return; }
+    selected.forEach(o => o.remove());
+    log("Removed selected targets.");
+}
+
+function clearTargets() {
+    const targetSelect = document.getElementById("targetSelect");
+    targetSelect.innerHTML = "";
+    log("Cleared targets.");
+}
+
+// Load initial browser view on page load
+window.addEventListener("load", () => {
+    fsLoad("/mnt/sentry");
+});
     async function startScan() {
         const gold = document.getElementById('goldSelect').value;
-        const targets = Array.from(document.getElementById('targetSelect').selectedOptions).map(o => o.value);
+        const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
         
         if(targets.length === 0) { alert("Select at least one Target drive!"); return; }
         
@@ -112,7 +205,7 @@
         if(!confirm("⚠️ WARNING: This will PERMANENTLY DELETE files from the Target drives. Confirm?")) return;
         
         const gold = document.getElementById('goldSelect').value;
-        const targets = Array.from(document.getElementById('targetSelect').selectedOptions).map(o => o.value);
+        const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
         
         log("⚡ EXECUTING REAPER PROTOCOL...");
         
