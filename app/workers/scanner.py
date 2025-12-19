@@ -2,7 +2,8 @@ import os
 import hashlib
 from typing import List
 from sqlmodel import Session, select
-from app.database.models import FileRecord, engine
+from app.database.models import FileRecord, Mission, Drive, engine
+
 
 # ---------------------------------------------------------
 # CONFIGURATION
@@ -26,48 +27,70 @@ def calculate_md5(file_path, block_size=65536):
         return None
 
 def run_scanner(target_paths: List[str]):
-    """
-    Scans a LIST of directories recursively.
-    """
     print(f"--- STARTING MULTI-TARGET SCAN ---")
     print(f"Targets: {target_paths}")
-    
+
     with Session(engine) as session:
+
+        # 1️⃣ Create ONE mission for this scan run
+        mission = Mission(status="running")
+        session.add(mission)
+        session.commit()
+        session.refresh(mission)
+
+        # 2️⃣ Loop over each target directory
         for root_directory in target_paths:
             if not os.path.exists(root_directory):
                 print(f"[ERROR] Path not found: {root_directory}")
                 continue
 
+            # 3️⃣ Create ONE drive record per target
+            drive = Drive(mountpoint=root_directory)
+            session.add(drive)
+            session.commit()
+            session.refresh(drive)
+
+            # 4️⃣ Walk files under this target
             for subdir, dirs, files in os.walk(root_directory):
-                # 1. Filter Ignored Directories
                 dirs[:] = [d for d in dirs if d not in IGNORE_LIST]
 
                 for filename in files:
                     filepath = os.path.join(subdir, filename)
 
-                    # 2. RESUME LOGIC: Check DB first
-                    existing = session.exec(select(FileRecord).where(FileRecord.path == filepath)).first()
+                    # Resume logic
+                    existing = session.exec(
+                        select(FileRecord).where(FileRecord.path == filepath)
+                    ).first()
                     if existing:
                         continue
 
-                    # 3. Process New File
                     try:
                         file_size = os.path.getsize(filepath)
                         file_hash = calculate_md5(filepath)
 
-                        if file_hash:
-                            new_record = FileRecord(
-                                filename=filename,
-                                path=filepath,
-                                size_bytes=file_size,
-                                hash=file_hash
-                            )
-                            session.add(new_record)
-                            session.commit()
-                            print(f"[+] Indexed: {filename}")
+                        if not file_hash:
+                            continue
+
+                        record = FileRecord(
+                            mission_id=mission.id,
+                            drive_id=drive.id,
+                            filename=filename,
+                            path=filepath,
+                            size_bytes=file_size,
+                            file_hash=file_hash,
+                            is_scanned=True,
+                        )
+
+                        session.add(record)
+                        session.commit()
+                        print(f"[+] Indexed: {filepath}")
 
                     except OSError:
-                        # Skip locked/system files quietly
                         continue
+
+        # 5️⃣ Close out mission
+        mission.status = "complete"
+        session.add(mission)
+        session.commit()
 
     print("--- SCAN COMPLETE ---")
