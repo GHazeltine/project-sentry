@@ -5,6 +5,9 @@ from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from pathlib import Path
+from fastapi import Query
+
 
 # 1. FIX PATHS FOR DOCKER
 # This tells Python to look in both the root and the /app folder for modules
@@ -64,6 +67,63 @@ async def index(request: Request):
 async def get_drives():
     """Refreshes the drive list"""
     return dm.detect_drives()
+
+# --- Filesystem Browser API (for Web UI parity with TUI DirectoryTree) ---
+
+BLOCKED_PREFIXES = ("/proc", "/sys", "/dev")
+
+@app.get("/api/fs/list")
+async def fs_list(path: str = Query("/", description="Absolute path to list")):
+    """
+    Lists directories (and files) at a given path.
+    Intended for building a web-based directory tree selector.
+    """
+    try:
+        # Normalize path safely
+        p = Path(path).expanduser()
+        p_str = str(p)
+
+        # Block dangerous/virtual filesystem areas
+        if any(p_str == bp or p_str.startswith(bp + "/") for bp in BLOCKED_PREFIXES):
+            return JSONResponse({"error": "Path is not allowed."}, status_code=403)
+
+        # Enforce absolute paths (keeps behavior predictable inside container)
+        if not p.is_absolute():
+            return JSONResponse({"error": "Path must be absolute."}, status_code=400)
+
+        if not p.exists():
+            return JSONResponse({"error": "Path does not exist."}, status_code=404)
+
+        if not p.is_dir():
+            return JSONResponse({"error": "Path is not a directory."}, status_code=400)
+
+        entries = []
+        # List children; sort: directories first, then files
+        children = list(p.iterdir())
+        children.sort(key=lambda c: (not c.is_dir(), c.name.lower()))
+
+        for c in children:
+            # Skip extremely noisy pseudo entries
+            name = c.name
+            c_path = str(c)
+            entries.append({
+                "name": name,
+                "path": c_path,
+                "type": "dir" if c.is_dir() else "file",
+            })
+
+        parent = str(p.parent) if str(p) != "/" else "/"
+
+        return {
+            "path": str(p),
+            "parent": parent,
+            "entries": entries
+        }
+
+    except PermissionError:
+        return JSONResponse({"error": "Permission denied."}, status_code=403)
+    except Exception as e:
+        return JSONResponse({"error": f"Unhandled error: {e}"}, status_code=500)
 
 @app.post("/api/scan")
 async def start_scan(request: Request):
