@@ -70,3 +70,17 @@ def run_janitor():
 
 if __name__ == "__main__":
     run_janitor()
+# --- Compatibility wrapper (server.py expects "Janitor") ---
+
+class Janitor:
+    """
+    Thin wrapper to keep server.py stable.
+    If server.py calls janitor.run(...) or janitor.clean(...),
+    we route that to the existing run_janitor() for now.
+    """
+
+    def run(self, *args, **kwargs):
+        return run_janitor()
+
+    def clean(self, *args, **kwargs):
+        return run_janitor()
