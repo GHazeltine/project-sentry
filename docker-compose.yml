@@ -1,0 +1,29 @@
+services:
+  sentry-core:
+    image: ghcr.io/ghazeltine/project-sentry:stabilize
+    container_name: sentry-core
+    restart: unless-stopped
+    
+    # CRITICAL: These privileges allow the Web UI to run 'mount -t cifs'
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    security_opt:
+      - apparmor:unconfined
+      
+    ports:
+      - "8000:8000"
+      
+    environment:
+      - SENTRY_USER=${SENTRY_USER:-admin}
+      - SENTRY_PASS=${SENTRY_PASS:-change-this-now}
+      - SENTRY_DB_PATH=/data/sentry.db
+      
+    volumes:
+      # Maps the host's /mnt/sentry to the container
+      # ':shared' is required so the container can create new mount points inside it
+      - /mnt/sentry:/mnt/sentry:shared
+      
+      # Persists the SQLite database to the host so data survives reboots
+      - /mnt/sentry/_db:/data
+
