@@ -109,7 +109,8 @@ ALLOWED_ROOTS = [
     Path("/media"), 
     Path("/mnt"), 
     Path("/run/media"),
-    Path("/")
+    Path("/")           # <--- Internal Container Root
+    Path("/host_fs")    # <--- NEW: The Host Computer's Hard Drive
 ]
 
 @app.get("/api/fs/list")

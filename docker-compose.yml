@@ -1,12 +1,11 @@
 services:
   sentry-core:
-    # We keep 'build: .' for now so you can test immediately without pushing/pulling
-    build: .
     image: ghcr.io/ghazeltine/project-sentry:stabilize
     container_name: sentry-core
     restart: unless-stopped
     
-    # PRIVILEGES: Required for mounting network drives
+    # PRIVILEGES: Required for hardware access
+    privileged: true
     cap_add:
       - SYS_ADMIN
       - DAC_READ_SEARCH
@@ -22,12 +21,12 @@ services:
       - SENTRY_DB_PATH=/data/sentry.db
       
     volumes:
-      # PERSISTENCE
+      # DATABASE PERSISTENCE
       - /mnt/sentry/_db:/data
       
-      # STORAGE ACCESS (The All-Seeing Fix)
-      # :shared / :rslave allows the container to see mounts happening on the host
-      - /mnt/sentry:/mnt/sentry:shared   # For Network Mounts
-      - /media:/media:rslave             # For USB Drives (Raspberry Pi default)
-      - /mnt:/mnt:rslave                 # For Manual Mounts
-      - /run/media:/run/media:rslave     # For some Linux Distros
+      # VISIBILITY MAPPINGS
+      - /mnt/sentry:/mnt/sentry:shared   # Network Mounts
+      - /media:/media:rslave             # USB Drives
+      - /mnt:/mnt:rslave                 # Manual Mounts
+      - /run/media:/run/media:rslave     # Linux Auto-Mounts
+      - /:/host_fs:rslave                # <--- THE KEY: Full Host Access
