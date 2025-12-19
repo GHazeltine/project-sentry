@@ -25,16 +25,21 @@ try:
     from app.core.drive_manager import DriveManager
     from app.workers.scanner import run_scanner
     from app.core.janitor import Janitor
+    from app.database.models import init_db
 except ImportError:
-    # Fallback for when we are already inside the /app directory
     from core.drive_manager import DriveManager
     from workers.scanner import run_scanner
     from core.janitor import Janitor
+    from database.models import init_db
 
 app = FastAPI()
 
 # 3. SETUP STATIC & TEMPLATE PATHS
 # We check multiple possible locations to prevent 404/Crash
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 static_search_paths = [
     os.path.join(BASE_DIR, "static"),
     os.path.join(BASE_DIR, "app", "static")

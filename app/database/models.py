@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 from sqlmodel import Field, SQLModel, create_engine
 
@@ -19,11 +20,15 @@ class FileRecord(SQLModel, table=True):
     file_hash: str = Field(index=True)
     is_scanned: bool = Field(default=False)
 
-# Database Setup
-sqlite_file_name = "sentry.db"
+# Database Setup (persistable path via env var)
+sqlite_file_name = os.getenv("SENTRY_DB_PATH", "/data/sentry.db")
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 engine = create_engine(sqlite_url)
 
-if __name__ == "__main__":
+def init_db():
     SQLModel.metadata.create_all(engine)
+
+if __name__ == "__main__":
+    init_db()
     print("Database tables created successfully.")
+
