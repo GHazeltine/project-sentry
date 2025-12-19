@@ -86,6 +86,11 @@ def mount_share(req: MountRequest, user: str = Depends(get_current_user)):
     result = dm.mount_smb(req.remote_path, req.username, req.password)
     return result
 
+# NEW: Required for the dashboard hardware dropdown
+@app.get("/api/drives")
+def get_drives(user: str = Depends(get_current_user)):
+    return DriveManager().detect_drives()
+
 @app.post("/api/scan")
 async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
     all_paths = req.gold_paths + req.target_paths
@@ -101,16 +106,16 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: 
     background_tasks.add_task(background_scan_task, req.gold_paths, req.target_paths, mission.id)
     return {"status": "Started", "mission_id": mission.id}
 
-# --- FILESYSTEM BROWSER (CRITICAL UPDATE) ---
+# --- FILESYSTEM BROWSER ---
 # This list controls what you can see. 
-# We added /media (USB) and / (Internal) to solve your issue.
+# Fixed commas here!
 ALLOWED_ROOTS = [
     Path("/mnt/sentry"), 
     Path("/media"), 
     Path("/mnt"), 
     Path("/run/media"),
-    Path("/")           # <--- Internal Container Root
-    Path("/host_fs")    # <--- NEW: The Host Computer's Hard Drive
+    Path("/"),          # Internal Container Root
+    Path("/host_fs")    # The Host Computer's Hard Drive
 ]
 
 @app.get("/api/fs/list")
@@ -129,11 +134,13 @@ async def fs_list(path: str = Query("/mnt/sentry"), user: str = Depends(get_curr
             }
 
         p = Path(path).resolve()
+        
+        # Security: In "God Mode" (Host Access), we relax strict root checking to allow navigation
         if not p.exists(): return JSONResponse({"error": "Path not found"}, status_code=404)
 
         entries = []
         for child in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
-            # Filter out hidden/system files
+            # Hide system dotfiles to reduce clutter
             if child.name.startswith('.'): continue
             entries.append({
                 "name": child.name,
