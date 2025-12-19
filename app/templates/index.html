@@ -131,9 +131,12 @@
         select.add(new Option("--- PHYSICAL DRIVES ---", "NONE", true, true));
         drives.forEach(d => {
             if (d.mountpoint) {
-                // Map host mountpoints to container path
-                const path = d.mountpoint === "/" ? "/host_fs" : `/host_fs${d.mountpoint}`;
-                select.add(new Option(`💾 ${d.label || d.name} (${d.size})`, path));
+                // FIXED: Check prefix to avoid duplication
+                let finalPath = d.mountpoint;
+                if (!finalPath.startsWith('/host_fs')) {
+                     finalPath = finalPath === "/" ? "/host_fs" : `/host_fs${finalPath}`;
+                }
+                select.add(new Option(`💾 ${d.label || d.name} (${d.size})`, finalPath));
             } else {
                 select.add(new Option(`⚠️ ${d.label || d.name} (Unmounted)`, "NONE", true, true));
             }
@@ -142,7 +145,7 @@
     } catch (e) { console.error("Drive detect fail", e); }
   }
 
-  // --- TREE VIEW (FIXED) ---
+  // --- TREE VIEW ---
   async function initTree(rootPath) {
     if (rootPath === "NONE") return;
     currentRoot = rootPath;
@@ -152,7 +155,7 @@
     container.innerHTML = "Loading...";
     container.innerHTML = ''; 
 
-    // 1. ADD THE "SELECT WHOLE DRIVE" HEADER NODE
+    // Header Node
     const rootNode = document.createElement('div');
     rootNode.className = 'tree-item';
     rootNode.style.marginBottom = "5px";
@@ -161,12 +164,12 @@
     const rootRow = document.createElement('div');
     rootRow.className = 'tree-row';
     rootRow.innerHTML = `<span class="caret">▼</span><span class="icon">💾</span> <span style="font-weight:bold; color:var(--neon);">[SELECT ENTIRE DRIVE]</span>`;
-    rootRow.onclick = () => selectNode(rootRow, rootPath); // <--- This allows selecting the parent
+    rootRow.onclick = () => selectNode(rootRow, rootPath);
     
     rootNode.appendChild(rootRow);
     container.appendChild(rootNode);
 
-    // 2. Load Children
+    // Children
     await loadFolder(rootPath, container);
   }
 

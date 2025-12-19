@@ -1,10 +1,12 @@
+version: '3.8'
+
 services:
   sentry-core:
-    image: ghcr.io/ghazeltine/project-sentry:stabilize
+    build: .
     container_name: sentry-core
     restart: unless-stopped
     
-    # PRIVILEGES: Required for hardware access
+    # HARDWARE ACCESS
     privileged: true
     cap_add:
       - SYS_ADMIN
@@ -21,12 +23,15 @@ services:
       - SENTRY_DB_PATH=/data/sentry.db
       
     volumes:
-      # DATABASE PERSISTENCE
-      - /mnt/sentry/_db:/data
+      # CODE MAPPING (Live Updates)
+      - .:/app
       
-      # VISIBILITY MAPPINGS
-      - /mnt/sentry:/mnt/sentry:shared   # Network Mounts
-      - /media:/media:rslave             # USB Drives
-      - /mnt:/mnt:rslave                 # Manual Mounts
-      - /run/media:/run/media:rslave     # Linux Auto-Mounts
-      - /:/host_fs:rslave                # <--- THE KEY: Full Host Access
+      # DATA PERSISTENCE
+      - ./_db:/data
+      
+      # SYSTEM VISIBILITY
+      - /mnt/sentry:/mnt/sentry:shared
+      - /media:/media:rslave
+      - /mnt:/mnt:rslave
+      - /run/media:/run/media:rslave
+      - /:/host_fs:rslave

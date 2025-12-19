@@ -1,121 +1,71 @@
-# 🛡️ PROJECT SENTRY
-### Autonomous Data Recovery & Deduplication Platform
-**The "Gold Standard" for Digital Hygiene.**
+# 🛡️ Project Sentry: Autonomous Data Recovery & Sanitation Platform
 
-![Python](https://img.shields.io/badge/Python-3.11-blue?style=for-the-badge&logo=python)
-![Platform](https://img.shields.io/badge/Platform-Raspberry_Pi_5_%7C_Linux_%7C_Docker-red?style=for-the-badge&logo=raspberrypi)
-![AI Chip](https://img.shields.io/badge/AI_Acceleration-Hailo--8L_NPU-green?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
+> **"The Reaper for Digital Clutter."**
+> A sovereign, air-gapped data consolidation system designed for IT consultants and sensitive data recovery operations.
+
+![Version](https://img.shields.io/badge/version-2.0.0-neon.svg) ![Docker](https://img.shields.io/badge/deployment-docker-blue.svg) ![Platform](https://img.shields.io/badge/platform-RaspberryPi%20%7C%20Linux-red.svg)
 
 ---
 
-## 📖 Overview
-**Project Sentry** is an intelligent data management system designed to consolidate fractured digital archives spread across multiple physical drives. Unlike standard duplicate finders, Sentry operates on a strict **"Gold Master" Protocol**: it designates one drive as the immutable source of truth and surgically removes redundancy from target drives only when it is 100% safe to do so.
+## 📋 Mission Profile
 
-Built for the **Edge**, Sentry is optimized for the **Raspberry Pi 5 with Hailo-8L AI Kit**, utilizing a hybrid engine that combines cryptographic precision with semantic visual understanding.
+Project Sentry is a specialized "Search and Destroy" engine for digital files. It solves a specific problem faced by IT consultants: **Consolidating fragmented data from multiple sources (Old HDDs, USBs, Network Shares) into a single "Golden Master" without creating duplicates.**
 
----
-
-## 🚀 Key Features
-
-### 🔒 The "Gold Master" Protocol
-* **Immutable Protection:** Files on the Master Drive are *read-only* to the system.
-* **Surgical Strikes:** A file is only deleted from a Target Drive if an exact cryptographic match exists on the Master.
-* **The "Kill List":** Users must explicitly authorize deletion after reviewing the database report.
-
-### 🧠 Hybrid AI Engine (CPU + NPU)
-Sentry uses a dual-layer scanning engine:
-1.  **Cryptographic Layer (CPU):** Uses **BLAKE2b** hashing (faster and safer than MD5/SHA) to detect byte-for-byte duplicates.
-2.  **Semantic Vision Layer (NPU):** Uses the **Hailo-8L AI Chip** to generate "Visual Vectors."
-    * *Detects resized images, format changes (PNG vs JPG), and slight edits.*
-    * *Falls back to CPU Perceptual Hashing (dHash) on non-AI hardware.*
-
-### 👻 The Ghostbuster (Janitor)
-* **Smart Cleanup:** After deleting files, the Janitor recursively scans directory trees bottom-up.
-* **Void Removal:** Dissolves empty "Ghost Folders" to leave a clean, organized hierarchy.
-
-### 🛡️ Hardware-Aware Logic
-* **Cross-Platform Mounts:** Auto-detects and handles **Mac HFS+ (Journaled)** and **Windows NTFS** permissions.
-* **Health Checks:** Monitors drive connectivity (`lsblk`) and prevents operations on "Dirty" or read-only file systems.
+### ⚡ Key Capabilities
+* **Omni-Source Scanning:** Simultaneously ingest data from Local USBs, Internal SATA/NVMe drives, and Network SMB Shares.
+* **The Tree View:** A tactical file browser that allows granular selection of entire drives or specific sub-folders.
+* **The Reaper Engine:** A hashing-based deduplication agent that identifies files by content (MD5), not just name.
+* **Host Penetration:** Uses Docker Privilege Elevation to mount and scan the host operating system's entire filesystem.
+* **Air-Gap Ready:** Fully self-contained. No cloud dependencies. No phone home.
 
 ---
 
-## 💻 Compatibility & Deployment
+## 🛠️ Deployment Protocols
 
-Project Sentry is built on **Python 3.11** and **FastAPI**, containerized with **Docker**.
+### Option A: The "Field Kit" (Raspberry Pi 5)
+*Ideal for on-site client data recovery.*
 
-### Supported Operating Systems
-| OS | Support Level | Notes |
-| :--- | :--- | :--- |
-| **Raspberry Pi OS (64-bit)** | 🟢 **Tier 1 (Native)** | Full AI Acceleration via Hailo-8L. |
-| **Ubuntu / Debian Linux** | 🟢 **Tier 1** | Native USB handling. CPU-based Visual Hashing. |
-| **macOS / Windows** | 🟡 **Tier 2** | Works via Docker Desktop. Requires manual drive sharing. |
+1.  **Clone:**
+    ```bash
+    git clone [https://github.com/ghazeltine/project-sentry.git](https://github.com/ghazeltine/project-sentry.git)
+    cd project-sentry
+    ```
+2.  **Engage:**
+    ```bash
+    docker compose up -d --build
+    ```
+3.  **Access:** Connect via Ethernet/Wi-Fi and navigate to `http://<PI_IP>:8000`.
 
-### Deployment Models
+### Option B: The "Lab Bench" (Linux Workstation)
+*Ideal for processing massive storage arrays.*
 
-#### 1. The "Edge Sentry" (Recommended)
-* **Hardware:** Raspberry Pi 5 + Hailo AI Kit + NVMe/USB Storage.
-* **Orchestration:** Kubernetes (K3s) or Docker Compose.
-* **Benefit:** Low power, high performance, always-on scanning.
-
-#### 2. The "Laptop Lab"
-* **Hardware:** Any standard laptop (x86/AMD64).
-* **Mode:** CPU Fallback.
-* **Benefit:** Portable, good for initial testing and organizing drives before archiving.
+1.  Ensure Docker Engine is installed.
+2.  Run the same commands as above.
+3.  **Note:** Sentry mounts your host filesystem at `/host_fs` to allow scanning of internal drives.
 
 ---
 
-## ⚡ Quick Start
+## 🕹️ Operational Guide
 
-### Option A: Docker (Fastest)
-```bash
-# 1. Build the image
-docker build -t project-sentry:v1 .
+### Phase 1: Connection
+* **Physical:** Plug drives into the host. Sentry auto-detects mounts in `/media`, `/mnt`, and `/run/media`.
+* **Network:** Use the **"Connect"** panel to mount SMB shares (NAS, Windows Server) directly into the Sentry filesystem.
 
-# 2. Run with USB access (Linux/Pi)
-docker run -d \
-  -p 8000:8000 \
-  --privileged \
-  -v /dev:/dev \
-  -v /media:/media \
-  project-sentry:v1
+### Phase 2: Selection (The Three Zones)
+1.  **Source Selector (Middle):** Use the dropdown to jump between USBs, Network Mounts, or the Host OS.
+2.  **Gold Master (Left):** Select folders containing data you want to **PROTECT**.
+    * *Rule:* Files here are indexed but NEVER touched.
+3.  **Targets (Right):** Select folders containing data you want to **CLEAN**.
+    * *Rule:* If a file here exists in Gold, it will be marked for deletion.
 
-Access the dashboard at http://localhost:8000
+### Phase 3: Execution
+1.  **Start Scan:** The system indexes all selected paths (Green Status Bar).
+2.  **Analyze:** The Reaper compares hashes between Gold and Target.
+3.  **Execute:**
+    * Click **"EXECUTE REAPER"** to permanently delete duplicates from the Target drives.
+    * *Result:* Your Target drives now contain **only unique data** that was missing from your Master.
 
-Option B: Python Local (Dev Mode)
-Bash
+---
 
-# 1. Clone & Install
-git clone [https://github.com/YOUR_USERNAME/project-sentry.git](https://github.com/YOUR_USERNAME/project-sentry.git)
-cd project-sentry
-pip install -r requirements.txt
-
-# 2. Run Server
-sudo python server.py
-🧩 Architecture
-Code snippet
-
-graph TD
-    A[Web Dashboard] -->|HTTP/JSON| B(FastAPI Server)
-    B --> C{Controller}
-    C -->|Detect| D[Drive Manager]
-    C -->|Index| E[Scanner]
-    E -->|Exact Match| F[CPU: BLAKE2b]
-    E -->|Visual Match| G[NPU: Hailo-8L]
-    C -->|Cleanup| H[Reaper & Janitor]
-    H -->|Delete| I[(Target Drives)]
-    I -.->|Read Only| J[(Gold Master)]
-🗺️ Roadmap
-[x] Core Deduplication (Scanner/Reaper)
-
-[x] Web Interface (FastAPI/HTML)
-
-[x] Hardware Auto-Fix (HFS+/NTFS)
-
-[x] AI Integration (Hailo-8L Hooks)
-
-[ ] Cluster Mode: Distribute scanning across multiple Pi nodes.
-
-[ ] Semantic Search: "Find all photos of a dog" using the visual vector database.
-
-Project Sentry is an open-source initiative. Use with caution. Always backup data before running batch deletion tools.
+**Property of Sovereign Silicon**
+*Internal Tooling - Authorized Use Only*
