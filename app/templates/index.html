@@ -1,225 +1,266 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PROJECT SENTRY | Command Center</title>
-    <style>
-        :root { --neon: #00ff41; --dark: #0d1117; --panel: #161b22; --danger: #ff3333; }
-        body { background: var(--dark); color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }
-        
-        .container { max-width: 1000px; margin: 0 auto; }
-        h1 { color: var(--neon); text-shadow: 0 0 10px rgba(0,255,65,0.3); border-bottom: 2px solid var(--panel); padding-bottom: 10px; }
-        
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { background: var(--panel); border: 1px solid #30363d; padding: 20px; border-radius: 6px; }
-        
-        select, button { width: 100%; padding: 10px; margin-top: 10px; background: #21262d; color: white; border: 1px solid #30363d; cursor: pointer; }
-        button:hover { background: #30363d; }
-        
-        .btn-action { background: var(--neon); color: black; font-weight: bold; }
-        .btn-danger { background: var(--danger); color: white; font-weight: bold; }
-        
-        #console-output { background: black; color: var(--neon); padding: 15px; height: 300px; overflow-y: auto; border: 1px solid #30363d; margin-top: 20px; font-size: 0.9em; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PROJECT SENTRY | Command Center</title>
+  <style>
+    :root { --neon:#00ff41; --dark:#0d1117; --panel:#161b22; --danger:#ff3333; }
+    body { background:var(--dark); color:#c9d1d9; font-family:'Courier New', monospace; margin:0; padding:20px; }
+    .container { max-width:1000px; margin:0 auto; }
+    h1 { color:var(--neon); text-shadow:0 0 10px rgba(0,255,65,0.3); border-bottom:2px solid var(--panel); padding-bottom:10px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .card { background:var(--panel); border:1px solid #30363d; padding:20px; border-radius:6px; }
+    select, button { width:100%; padding:10px; margin-top:10px; background:#21262d; color:white; border:1px solid #30363d; cursor:pointer; }
+    button:hover { background:#30363d; }
+    .btn-action { background:var(--neon); color:black; font-weight:bold; }
+    .btn-danger { background:var(--danger); color:white; font-weight:bold; }
+    #console-output { background:black; color:var(--neon); padding:15px; height:300px; overflow-y:auto; border:1px solid #30363d; margin-top:20px; font-size:0.9em; }
+    .muted { color:#8b949e; font-size:0.9em; }
+    .row { display:flex; gap:10px; margin-top:10px; }
+    .col { flex:1; }
+  </style>
 </head>
 <body>
-
 <div class="container">
-    <h1>🛡️ PROJECT SENTRY // COMMAND</h1>
-    
-    <div class="grid">
-        <div class="card">
-            <h3>💾 HARDWARE CONFIG</h3>
-            
-            <label>1. Select GOLD MASTER (Protected):</label>
-            <select id="goldSelect">
-                {% for drive in drives %}
-                <option value="{{ drive.mountpoint }}">{{ drive.label }} ({{ drive.size }})</option>
-                {% endfor %}
-            </select>
-            
-            <label style="margin-top:15px; display:block;">2. Select TARGET FOLDERS (From /mnt/sentry):</label>
+  <h1>🛡️ PROJECT SENTRY // COMMAND</h1>
 
-<div style="display:flex; gap:10px; margin-top:10px;">
-  <div style="flex:1;">
-    <div style="font-size:0.9em; color:#8b949e;">Browser</div>
-    <div id="fsPath" style="margin:6px 0; font-size:0.9em; color:#c9d1d9;">/mnt/sentry</div>
-    <select id="fsBrowser" size="10" style="height: 220px;"></select>
-    <button onclick="fsUp()">⬆️ Up</button>
-    <button onclick="fsEnter()">➡️ Enter Folder</button>
-    <button onclick="addTarget()">➕ Add Selected Folder</button>
-  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>💾 HARDWARE CONFIG</h3>
 
-  <div style="flex:1;">
-    <div style="font-size:0.9em; color:#8b949e;">Selected Targets</div>
-    <select id="targetSelect" multiple style="height: 280px;"></select>
-    <button onclick="removeTarget()" class="btn-danger">➖ Remove Selected</button>
-    <button onclick="clearTargets()">🧹 Clear Targets</button>
-  </div>
-</div>
+      <label>1. Select GOLD MASTER (Protected):</label>
+      <select id="goldSelect">
+        {% for drive in drives %}
+        <option value="{{ drive.mountpoint }}">{{ drive.label }} ({{ drive.size }})</option>
+        {% endfor %}
+      </select>
 
+      <label style="margin-top:15px; display:block;">2. Select TARGET FOLDERS (From /mnt/sentry):</label>
+
+      <div class="row">
+        <div class="col">
+          <div class="muted">Browser</div>
+          <div id="fsPath" style="margin:6px 0; font-size:0.9em; color:#c9d1d9;">/mnt/sentry</div>
+          <select id="fsBrowser" size="10" style="height:220px;"></select>
+          <button onclick="fsUp()">⬆️ Up</button>
+          <button onclick="fsEnter()">➡️ Enter Folder</button>
+          <button onclick="addTarget()">➕ Add Selected Folder</button>
         </div>
 
-        <div class="card">
-            <h3>⚡ OPERATIONS</h3>
-            <button onclick="startScan()" class="btn-action">🔍 INITIATE SCAN</button>
-            <button onclick="analyze()" id="btn-analyze" disabled>💀 ANALYZE DUPLICATES</button>
-            <button onclick="executeClean()" id="btn-destroy" class="btn-danger" disabled>⚠️ EXECUTE REAPER</button>
+        <div class="col">
+          <div class="muted">Selected Targets</div>
+          <select id="targetSelect" multiple style="height:280px;"></select>
+          <button onclick="removeTarget()" class="btn-danger">➖ Remove Selected</button>
+          <button onclick="clearTargets()">🧹 Clear Targets</button>
         </div>
+      </div>
     </div>
 
-    <div id="console-output">
-        > SYSTEM ONLINE.
-        > WAITING FOR USER INPUT...
+    <div class="card">
+      <h3>⚡ OPERATIONS</h3>
+      <button onclick="startScan()" class="btn-action">🔍 INITIATE SCAN</button>
+      <button onclick="analyze()" id="btn-analyze" disabled>💀 ANALYZE DUPLICATES</button>
+      <button onclick="executeClean()" id="btn-destroy" class="btn-danger" disabled>⚠️ EXECUTE REAPER</button>
     </div>
+  </div>
+
+  <div id="console-output">
+    <div>> SYSTEM ONLINE.</div>
+    <div>> WAITING FOR USER INPUT...</div>
+  </div>
 </div>
 
 <script>
-    function log(msg) {
-        const box = document.getElementById('console-output');
-        box.innerHTML += `<div>> ${msg}</div>`;
-        box.scrollTop = box.scrollHeight;
-    }
+  function log(msg) {
+    const box = document.getElementById('console-output');
+    box.innerHTML += `<div>> ${msg}</div>`;
+    box.scrollTop = box.scrollHeight;
+  }
 
-let currentPath = "/mnt/sentry";
+  // -------------------------------
+  // Filesystem browser
+  // -------------------------------
+  let currentPath = "/mnt/sentry";
 
-async function fsLoad(path) {
+  async function fsLoad(path) {
     currentPath = path;
     document.getElementById("fsPath").innerText = currentPath;
 
     const resp = await fetch(`/api/fs/list?path=${encodeURIComponent(currentPath)}`);
     if (!resp.ok) {
-        log(`❌ FS ERROR: ${resp.status}`);
-        return;
+      log(`❌ FS ERROR: ${resp.status}`);
+      return;
     }
     const data = await resp.json();
 
     const browser = document.getElementById("fsBrowser");
     browser.innerHTML = "";
 
-    // Add directories only (skip files for target selection)
     data.entries
       .filter(e => e.type === "dir")
       .forEach(e => {
-          const opt = document.createElement("option");
-          opt.value = e.path;
-          opt.textContent = e.name;
-          browser.appendChild(opt);
+        const opt = document.createElement("option");
+        opt.value = e.path;
+        opt.textContent = e.name;
+        browser.appendChild(opt);
       });
-}
+  }
 
-function fsUp() {
+  function fsUp() {
     if (currentPath === "/mnt/sentry") {
-        log("At root of allowed browsing.");
-        return;
+      log("At root of allowed browsing.");
+      return;
     }
     const parent = currentPath.split("/").slice(0, -1).join("/") || "/mnt/sentry";
     fsLoad(parent);
-}
+  }
 
-function fsEnter() {
+  function fsEnter() {
     const browser = document.getElementById("fsBrowser");
     const sel = browser.selectedOptions[0];
     if (!sel) { alert("Select a folder to enter."); return; }
     fsLoad(sel.value);
-}
+  }
 
-function addTarget() {
+  function addTarget() {
     const browser = document.getElementById("fsBrowser");
     const sel = browser.selectedOptions[0];
     if (!sel) { alert("Select a folder to add."); return; }
 
     const targetSelect = document.getElementById("targetSelect");
     const exists = Array.from(targetSelect.options).some(o => o.value === sel.value);
-    if (exists) { log("Target already added."); return; }
+    if (exists) {
+      log("Target already selected.");
+      return;
+    }
 
     const opt = document.createElement("option");
     opt.value = sel.value;
     opt.textContent = sel.value;
-    opt.selected = true;
     targetSelect.appendChild(opt);
+    log(`➕ Added target: ${sel.value}`);
+  }
 
-    log(`✅ Added target: ${sel.value}`);
-}
-
-function removeTarget() {
+  function removeTarget() {
     const targetSelect = document.getElementById("targetSelect");
     const selected = Array.from(targetSelect.selectedOptions);
-    if (selected.length === 0) { alert("Select target(s) to remove."); return; }
     selected.forEach(o => o.remove());
-    log("Removed selected targets.");
-}
+    log("➖ Removed selected targets.");
+  }
 
-function clearTargets() {
-    const targetSelect = document.getElementById("targetSelect");
-    targetSelect.innerHTML = "";
-    log("Cleared targets.");
-}
+  function clearTargets() {
+    document.getElementById("targetSelect").innerHTML = "";
+    log("🧹 Cleared all targets.");
+  }
 
-// Load initial browser view on page load
-window.addEventListener("load", () => {
+  window.addEventListener("load", () => {
     fsLoad("/mnt/sentry");
-});
-    async function startScan() {
-        const gold = document.getElementById('goldSelect').value;
-        const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
-        
-        if(targets.length === 0) { alert("Select at least one Target drive!"); return; }
-        
-        log("🚀 INITIALIZING SCANNER...");
-        document.body.style.cursor = "wait";
-        
-        const response = await fetch('/api/scan', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ gold, targets })
-        });
-        
-        const result = await response.json();
-        log(`✅ ${result.message}`);
+  });
+
+  // -------------------------------
+  // Scan + heartbeat
+  // -------------------------------
+  let scanPoll = null;
+
+  async function pollScan(missionId) {
+    if (scanPoll) clearInterval(scanPoll);
+
+    scanPoll = setInterval(async () => {
+      const resp = await fetch(`/api/scan/status?mission_id=${missionId}`);
+      if (!resp.ok) return;
+
+      const s = await resp.json();
+      log(`📈 Mission ${s.mission_id}: ${s.status} | indexed=${s.files_indexed}`);
+
+      if (s.status === "COMPLETE") {
+        clearInterval(scanPoll);
+        scanPoll = null;
+        log("✅ Scan complete. You can analyze now.");
         document.getElementById('btn-analyze').disabled = false;
-        document.body.style.cursor = "default";
+      }
+    }, 1000);
+  }
+
+  async function startScan() {
+    const gold = document.getElementById('goldSelect').value;
+    const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
+
+    if (targets.length === 0) { alert("Select at least one Target folder!"); return; }
+
+    log("🚀 INITIALIZING SCANNER (background)...");
+    document.body.style.cursor = "wait";
+
+    const response = await fetch('/api/scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ gold, targets })
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      log(`❌ Scan start failed: ${response.status} ${t}`);
+      document.body.style.cursor = "default";
+      return;
     }
 
-    async function analyze() {
-        const gold = document.getElementById('goldSelect').value;
-        log("💀 ANALYZING DATABASE...");
-        
-        const response = await fetch(`/api/analyze?gold_path=${encodeURIComponent(gold)}`);
-        const data = await response.json();
-        
-        log(`⚠️  FOUND: ${data.count} Duplicates`);
-        log(`💾  POTENTIAL RECLAIM: ${data.size_gb} GB`);
-        
-        if(data.count > 0) {
-            log("Sample Duplicates:");
-            data.files.forEach(f => log(`   - ${f}`));
-            document.getElementById('btn-destroy').disabled = false;
-        } else {
-            log("✅ System Clean. No duplicates found.");
-        }
+    const result = await response.json();
+    log(`✅ ${result.status} (mission ${result.mission_id})`);
+
+    // heartbeat
+    pollScan(result.mission_id);
+
+    document.body.style.cursor = "default";
+  }
+
+  async function analyze() {
+    const gold = document.getElementById('goldSelect').value;
+    log("💀 ANALYZING DATABASE...");
+
+    const response = await fetch(`/api/analyze?gold_path=${encodeURIComponent(gold)}`);
+    if (!response.ok) {
+      const t = await response.text();
+      log(`❌ Analyze failed: ${response.status} ${t}`);
+      return;
     }
 
-    async function executeClean() {
-        if(!confirm("⚠️ WARNING: This will PERMANENTLY DELETE files from the Target drives. Confirm?")) return;
-        
-        const gold = document.getElementById('goldSelect').value;
-        const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
-        
-        log("⚡ EXECUTING REAPER PROTOCOL...");
-        
-        const response = await fetch('/api/clean', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ gold, targets })
-        });
-        
-        const result = await response.json();
-        log("✅ MISSION COMPLETE.");
-        log("✨ Janitor Report: " + JSON.stringify(result.janitor_stats));
+    const data = await response.json();
+    log(`⚠️  FOUND: ${data.count} Duplicates`);
+    log(`💾  POTENTIAL RECLAIM: ${data.size_gb} GB`);
+
+    if (data.count > 0) {
+      log("Sample Duplicates:");
+      data.files.forEach(f => log(`   - ${f}`));
+      document.getElementById('btn-destroy').disabled = false;
+    } else {
+      log("✅ System Clean. No duplicates found.");
     }
+  }
+
+  async function executeClean() {
+    if (!confirm("⚠️ WARNING: This will PERMANENTLY DELETE files from the Target folders. Confirm?")) return;
+
+    const gold = document.getElementById('goldSelect').value;
+    const targets = Array.from(document.getElementById('targetSelect').options).map(o => o.value);
+
+    log("⚡ EXECUTING REAPER PROTOCOL...");
+
+    const response = await fetch('/api/clean', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ gold, targets })
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      log(`❌ Clean failed: ${response.status} ${t}`);
+      return;
+    }
+
+    const result = await response.json();
+    log("✅ MISSION COMPLETE.");
+    log("✨ Janitor Report: " + JSON.stringify(result.janitor_stats));
+  }
 </script>
-
 </body>
 </html>
