@@ -1,17 +1,31 @@
+# Overwrite app/core/janitor.py with the new version
+cat > app/core/janitor.py << 'EOF'
 import os
 
 class Janitor:
-    def __init__(self, target_root: str):
-        self.target_root = target_root
-
-    def clean_empty_folders(self):
-        empty_dirs = []
-        for root, dirs, files in os.walk(self.target_root, topdown=False):
-            for name in dirs:
-                full_path = os.path.join(root, name)
+    """
+    The Ghostbuster.
+    Responsible for cleaning up empty directory structures 
+    left behind after the Reaper deletes files.
+    """
+    
+    def cleanup_ghosts(self, target_paths):
+        removed_count = 0
+        print(f"[Janitor] Starting ghost bust on: {target_paths}")
+        
+        for root_path in target_paths:
+            if not os.path.exists(root_path):
+                continue
+                
+            # Walk BOTTOM-UP (topdown=False)
+            # This deletes nested empty folders (A/B/C -> deletes C, then B, then A)
+            for dirpath, dirnames, filenames in os.walk(root_path, topdown=False):
                 try:
-                    if not os.listdir(full_path):
-                        os.rmdir(full_path)
-                        empty_dirs.append(full_path)
-                except: pass
-        return empty_dirs
+                    if not os.listdir(dirpath):
+                        os.rmdir(dirpath)
+                        removed_count += 1
+                except Exception as e:
+                    print(f"[Janitor] Failed to remove {dirpath}: {e}")
+                    
+        return removed_count
+EOF

@@ -288,9 +288,14 @@
   }
 
   async function clean() {
-    if(!confirm("DELETE TARGET FILES?")) return;
-    const res = await api('/api/clean', 'POST', {});
-    alert(`Deleted: ${res.deleted}`);
+    if(!confirm("WARNING: This will delete files AND empty folders from TARGETS. Confirm?")) return;
+    
+    // We send targetPaths to the API so the Janitor knows where to clean
+    const res = await api('/api/clean', 'POST', { 
+      target_paths: Array.from(targetPaths) 
+    });
+    
+    alert(`Cleanup Complete!\nFiles Deleted: ${res.files_deleted}\nGhost Folders Removed: ${res.ghost_folders_removed}`);
   }
 
   // Init

@@ -15,6 +15,7 @@ from app.database.models import init_db, engine, ScanMission, FileRecord
 from app.core.drive_manager import DriveManager
 from app.core.scanner import Scanner
 from app.core.reaper import Reaper
+from app.core.janitor import Janitor  # <--- NEW IMPORT
 
 app = FastAPI(title="Project Sentry | Command Center")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +46,9 @@ class ScanRequest(BaseModel):
     gold_paths: List[str]
     target_paths: List[str]
 
+class CleanRequest(BaseModel):     # <--- NEW MODEL
+    target_paths: List[str]
+
 # --- BACKGROUND TASKS ---
 def background_scan_task(gold_paths: List[str], target_paths: List[str], mission_id: int):
     scanner = Scanner(mission_id=mission_id)
@@ -53,18 +57,13 @@ def background_scan_task(gold_paths: List[str], target_paths: List[str], mission
         mission.status = "RUNNING"
         session.add(mission)
         session.commit()
-        
         try:
-            # 1. Scan Protected (Gold)
             for path in gold_paths:
                 drive_id = os.path.basename(path)
                 scanner.scan_directory(path, tag="MASTER", drive_id=drive_id)
-                
-            # 2. Scan Targets
             for path in target_paths:
                 drive_id = os.path.basename(path)
                 scanner.scan_directory(path, tag="TARGET", drive_id=drive_id)
-                
             mission.status = "COMPLETE"
         except Exception as e:
             print(f"Scan Error: {e}")
@@ -86,7 +85,6 @@ def mount_share(req: MountRequest, user: str = Depends(get_current_user)):
     result = dm.mount_smb(req.remote_path, req.username, req.password)
     return result
 
-# NEW: Required for the dashboard hardware dropdown
 @app.get("/api/drives")
 def get_drives(user: str = Depends(get_current_user)):
     return DriveManager().detect_drives()
@@ -94,8 +92,7 @@ def get_drives(user: str = Depends(get_current_user)):
 @app.post("/api/scan")
 async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
     all_paths = req.gold_paths + req.target_paths
-    if not all_paths:
-        return JSONResponse({"error": "No paths selected"}, status_code=400)
+    if not all_paths: return JSONResponse({"error": "No paths selected"}, status_code=400)
 
     with Session(engine) as session:
         mission = ScanMission(timestamp=time.time(), root_paths=";".join(all_paths), status="PENDING")
@@ -107,47 +104,33 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: 
     return {"status": "Started", "mission_id": mission.id}
 
 # --- FILESYSTEM BROWSER ---
-# This list controls what you can see. 
-# Fixed commas here!
 ALLOWED_ROOTS = [
-    Path("/mnt/sentry"), 
-    Path("/media"), 
-    Path("/mnt"), 
-    Path("/run/media"),
-    Path("/"),          # Internal Container Root
-    Path("/host_fs")    # The Host Computer's Hard Drive
+    Path("/mnt/sentry"), Path("/media"), Path("/mnt"), 
+    Path("/run/media"), Path("/"), Path("/host_fs")
 ]
 
 @app.get("/api/fs/list")
 async def fs_list(path: str = Query("/mnt/sentry"), user: str = Depends(get_current_user)):
     try:
-        # Default to a safe starting point if 'ROOT' is requested
         if path == "ROOT":
             return {
-                "path": "ROOT",
-                "parent": "ROOT",
+                "path": "ROOT", "parent": "ROOT",
                 "entries": [
                     {"name": "Local Media (USB)", "path": "/media", "type": "dir"},
                     {"name": "Network Mounts", "path": "/mnt/sentry", "type": "dir"},
                     {"name": "System Mounts", "path": "/mnt", "type": "dir"}
                 ]
             }
-
         p = Path(path).resolve()
-        
-        # Security: In "God Mode" (Host Access), we relax strict root checking to allow navigation
         if not p.exists(): return JSONResponse({"error": "Path not found"}, status_code=404)
 
         entries = []
         for child in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
-            # Hide system dotfiles to reduce clutter
             if child.name.startswith('.'): continue
             entries.append({
-                "name": child.name,
-                "path": str(child),
+                "name": child.name, "path": str(child),
                 "type": "dir" if child.is_dir() else "file",
             })
-
         return {"path": str(p), "parent": str(p.parent), "entries": entries}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -172,6 +155,17 @@ def analyze(user: str = Depends(get_current_user)):
     }
 
 @app.post("/api/clean")
-def clean(user: str = Depends(get_current_user)):
+def clean(req: CleanRequest, user: str = Depends(get_current_user)):
+    # 1. Reaper: Delete Files
     reaper = Reaper()
-    return reaper.execute_cleanup()
+    cleanup_stats = reaper.execute_cleanup()
+
+    # 2. Janitor: Delete Empty Folders (Ghostbusting)
+    janitor = Janitor()
+    ghosts_removed = janitor.cleanup_ghosts(req.target_paths)
+    
+    return {
+        "files_deleted": cleanup_stats['deleted'],
+        "file_errors": cleanup_stats['errors'],
+        "ghost_folders_removed": ghosts_removed
+    }
