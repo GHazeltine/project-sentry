@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path  # <--- Critical for filesystem browser
 from typing import List
 from fastapi import FastAPI, Request, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -80,7 +81,7 @@ def get_drives(user: str = Depends(get_current_user)):
 
 @app.post("/api/mount")
 def mount_share(req: MountRequest, user: str = Depends(get_current_user)):
-    """Transferred from TUI: Mounts a network share via API."""
+    """Mounts a network share via API."""
     dm = DriveManager()
     result = dm.mount_smb(req.remote_path, req.username, req.password)
     if not result["success"]:
@@ -101,6 +102,57 @@ async def start_scan(request: Request, background_tasks: BackgroundTasks, user: 
         
     background_tasks.add_task(background_scan_task, targets, mission.id)
     return {"status": "Started", "mission_id": mission.id}
+
+# --- FILESYSTEM BROWSER (EXPANDED ACCESS) ---
+ALLOWED_ROOTS = [
+    Path("/mnt/sentry"), 
+    Path("/media"), 
+    Path("/mnt"), 
+    Path("/run/media")
+]
+
+@app.get("/api/fs/list")
+async def fs_list(
+    path: str = Query("/mnt/sentry", description="Absolute path to list"),
+    user: str = Depends(get_current_user),
+):
+    """Lists directories. Authenticated. Safe."""
+    try:
+        p = Path(path).expanduser().resolve()
+        
+        # 1. Security Check: Is it within an allowed root?
+        is_allowed = False
+        for root in ALLOWED_ROOTS:
+            if str(p).startswith(str(root.resolve())):
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            return JSONResponse({"error": f"Path outside allowed areas ({path})"}, status_code=403)
+
+        if not p.exists():
+            return JSONResponse({"error": "Path does not exist."}, status_code=404)
+
+        # 2. Build Entry List
+        entries = []
+        for child in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            entries.append({
+                "name": child.name,
+                "path": str(child),
+                "type": "dir" if child.is_dir() else "file",
+            })
+
+        # 3. Calculate Parent (Smart Navigation)
+        parent = str(p.parent)
+        if str(p) in [str(r.resolve()) for r in ALLOWED_ROOTS]:
+            parent = str(p) # Stay at root if at top level
+
+        return {"path": str(p), "parent": parent, "entries": entries}
+
+    except PermissionError:
+        return JSONResponse({"error": "Permission denied."}, status_code=403)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/status")
 def get_status(user: str = Depends(get_current_user)):
