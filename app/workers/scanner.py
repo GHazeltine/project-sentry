@@ -1,9 +1,10 @@
 import os
+import time
 import hashlib
 from typing import List
 from sqlmodel import Session, select
-import time
 from app.database.models import FileRecord, ScanMission, engine
+
 
 
 
@@ -32,13 +33,13 @@ def calculate_md5(file_path, block_size=65536):
 def run_scanner(target_paths: List[str]):
     """
     Scans a LIST of directories recursively.
-    Creates one ScanMission per run and writes FileRecord rows.
+    Creates one ScanMission per run and links each FileRecord to it.
     """
     print(f"--- STARTING MULTI-TARGET SCAN ---")
     print(f"Targets: {target_paths}")
 
     with Session(engine) as session:
-        # Create ONE mission for this scan run
+        # Create a mission record for this scan run
         mission = ScanMission(
             timestamp=time.time(),
             root_paths=";".join(target_paths),
@@ -60,7 +61,7 @@ def run_scanner(target_paths: List[str]):
                 for filename in files:
                     filepath = os.path.join(subdir, filename)
 
-                    # Resume logic (path-only is ok for now)
+                    # Resume logic: skip if already indexed
                     existing = session.exec(
                         select(FileRecord).where(FileRecord.path == filepath)
                     ).first()
@@ -70,35 +71,30 @@ def run_scanner(target_paths: List[str]):
                     try:
                         file_size = os.path.getsize(filepath)
                         file_hash = calculate_md5(filepath)
-                        if not file_hash:
-                            continue
+                        ext = os.path.splitext(filename)[1].lstrip(".").lower() or None
 
-                        _, ext = os.path.splitext(filename)
-                        ext = ext.lstrip(".").lower() or "none"
-
-                        created_at = os.path.getmtime(filepath)  # float epoch
-
-                        new_record = FileRecord(
-                            mission_id=mission.id,
-                            drive_id=root_directory,     # string field in your model
-                            filename=filename,
-                            path=filepath,
-                            extension=ext,
-                            size_bytes=file_size,
-                            created_at=created_at,
-                            file_hash=file_hash,
-                            is_scanned=True,
-                        )
-                        session.add(new_record)
-                        session.commit()
-                        print(f"[+] Indexed: {filepath}")
+                        if file_hash:
+                            new_record = FileRecord(
+                                mission_id=mission.id,
+                                drive_id=root_directory,
+                                path=filepath,
+                                filename=filename,
+                                extension=ext or "",
+                                size_bytes=file_size,
+                                created_at=time.time(),
+                                file_hash=file_hash,
+                                is_scanned=True,
+                            )
+                            session.add(new_record)
+                            session.commit()
+                            print(f"[+] Indexed: {filename}")
 
                     except OSError:
                         continue
 
+        # Mark mission complete
         mission.status = "COMPLETE"
         session.add(mission)
         session.commit()
 
     print("--- SCAN COMPLETE ---")
-
