@@ -7,6 +7,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from fastapi import Query
+import secrets
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
 
 
 # 1. FIX PATHS FOR DOCKER
@@ -54,26 +58,59 @@ for path in template_search_paths:
 dm = DriveManager()
 janitor = Janitor()
 
+basic_auth = HTTPBasic()
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    user = os.getenv("SENTRY_USER", "")
+    pwd = os.getenv("SENTRY_PASS", "")
+
+    # If not configured, fail closed
+    if not user or not pwd:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Auth not configured (set SENTRY_USER and SENTRY_PASS)."
+        )
+
+    ok_user = secrets.compare_digest(credentials.username, user)
+    ok_pwd = secrets.compare_digest(credentials.password, pwd)
+
+    if not (ok_user and ok_pwd):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": 'Basic realm="Project Sentry"'},
+        )
+    return True
+
+
 # 4. API ROUTES
 @app.get("/")
-async def index(request: Request):
-    """Renders the Dashboard"""
+async def index(
+    request: Request,
+    _: bool = Depends(require_auth)
+):
     drives = dm.detect_drives()
-    if templates:
-        return templates.TemplateResponse("index.html", {"request": request, "drives": drives})
-    return JSONResponse({"error": "Templates folder not found"}, status_code=500)
+    return templates.TemplateResponse("index.html", {"request": request, "drives": drives})
+
 
 @app.get("/api/drives")
-async def get_drives():
-    """Refreshes the drive list"""
+async def get_drives(
+    _: bool = Depends(require_auth)
+):
     return dm.detect_drives()
+
 
 # --- Filesystem Browser API (for Web UI parity with TUI DirectoryTree) ---
 
 BLOCKED_PREFIXES = ("/proc", "/sys", "/dev")
 
 @app.get("/api/fs/list")
-async def fs_list(path: str = Query("/", description="Absolute path to list")):
+async def fs_list(
+    path: str = Query("/", description="Absolute path to list"),
+    _: bool = Depends(require_auth)
+):
+    ...
+
     """
     Lists directories (and files) at a given path.
     Intended for building a web-based directory tree selector.
@@ -126,12 +163,15 @@ async def fs_list(path: str = Query("/", description="Absolute path to list")):
         return JSONResponse({"error": f"Unhandled error: {e}"}, status_code=500)
 
 @app.post("/api/scan")
-async def start_scan(request: Request):
-    """Triggers the Scanner Engine"""
+async def start_scan(
+    request: Request,
+    _: bool = Depends(require_auth)
+):
     data = await request.json()
     targets = data.get('targets', [])
     run_scanner(targets)
     return {"status": "Scan Complete", "message": "Indexing finished."}
+
 
 if __name__ == "__main__":
     print(f"🚀 Sentry Server starting from: {BASE_DIR}")
