@@ -1,10 +1,12 @@
 services:
   sentry-core:
+    # We keep 'build: .' for now so you can test immediately without pushing/pulling
+    build: .
     image: ghcr.io/ghazeltine/project-sentry:stabilize
     container_name: sentry-core
     restart: unless-stopped
     
-    # CRITICAL: These privileges allow the Web UI to run 'mount -t cifs'
+    # PRIVILEGES: Required for mounting network drives
     cap_add:
       - SYS_ADMIN
       - DAC_READ_SEARCH
@@ -20,10 +22,12 @@ services:
       - SENTRY_DB_PATH=/data/sentry.db
       
     volumes:
-      # Maps the host's /mnt/sentry to the container
-      # ':shared' is required so the container can create new mount points inside it
-      - /mnt/sentry:/mnt/sentry:shared
-      
-      # Persists the SQLite database to the host so data survives reboots
+      # PERSISTENCE
       - /mnt/sentry/_db:/data
-
+      
+      # STORAGE ACCESS (The All-Seeing Fix)
+      # :shared / :rslave allows the container to see mounts happening on the host
+      - /mnt/sentry:/mnt/sentry:shared   # For Network Mounts
+      - /media:/media:rslave             # For USB Drives (Raspberry Pi default)
+      - /mnt:/mnt:rslave                 # For Manual Mounts
+      - /run/media:/run/media:rslave     # For some Linux Distros

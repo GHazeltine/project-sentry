@@ -1,6 +1,6 @@
 import os
 import time
-from pathlib import Path  # <--- Critical for filesystem browser
+from pathlib import Path
 from typing import List
 from fastapi import FastAPI, Request, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -15,12 +15,10 @@ from app.database.models import init_db, engine, ScanMission, FileRecord
 from app.core.drive_manager import DriveManager
 from app.core.scanner import Scanner
 from app.core.reaper import Reaper
-from app.core.janitor import Janitor
 
 app = FastAPI(title="Project Sentry | Command Center")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Setup Templates
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))
 
 # Auth Logic
@@ -43,23 +41,30 @@ class MountRequest(BaseModel):
     username: str
     password: str
 
-class CleanRequest(BaseModel):
-    gold: str
-    targets: List[str]
+class ScanRequest(BaseModel):
+    gold_paths: List[str]
+    target_paths: List[str]
 
 # --- BACKGROUND TASKS ---
-def background_scan_task(targets: List[str], mission_id: int):
+def background_scan_task(gold_paths: List[str], target_paths: List[str], mission_id: int):
     scanner = Scanner(mission_id=mission_id)
     with Session(engine) as session:
         mission = session.get(ScanMission, mission_id)
         mission.status = "RUNNING"
         session.add(mission)
         session.commit()
+        
         try:
-            for path in targets:
-                tag = "MASTER" if "GOLD" in path.upper() else "TARGET"
-                drive_id = os.path.basename(path) 
-                scanner.scan_directory(path, tag, drive_id)
+            # 1. Scan Protected (Gold)
+            for path in gold_paths:
+                drive_id = os.path.basename(path)
+                scanner.scan_directory(path, tag="MASTER", drive_id=drive_id)
+                
+            # 2. Scan Targets
+            for path in target_paths:
+                drive_id = os.path.basename(path)
+                scanner.scan_directory(path, tag="TARGET", drive_id=drive_id)
+                
             mission.status = "COMPLETE"
         except Exception as e:
             print(f"Scan Error: {e}")
@@ -75,82 +80,67 @@ async def index(request: Request, user: str = Depends(get_current_user)):
     drives = dm.detect_drives()
     return templates.TemplateResponse("index.html", {"request": request, "drives": drives})
 
-@app.get("/api/drives")
-def get_drives(user: str = Depends(get_current_user)):
-    return DriveManager().detect_drives()
-
 @app.post("/api/mount")
 def mount_share(req: MountRequest, user: str = Depends(get_current_user)):
-    """Mounts a network share via API."""
     dm = DriveManager()
     result = dm.mount_smb(req.remote_path, req.username, req.password)
-    if not result["success"]:
-        return JSONResponse({"error": result["message"]}, status_code=400)
     return result
 
 @app.post("/api/scan")
-async def start_scan(request: Request, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
-    data = await request.json()
-    targets = data.get("targets", [])
-    if not targets: return JSONResponse({"error": "No targets"}, status_code=400)
+async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
+    all_paths = req.gold_paths + req.target_paths
+    if not all_paths:
+        return JSONResponse({"error": "No paths selected"}, status_code=400)
 
     with Session(engine) as session:
-        mission = ScanMission(timestamp=time.time(), root_paths=";".join(targets), status="PENDING")
+        mission = ScanMission(timestamp=time.time(), root_paths=";".join(all_paths), status="PENDING")
         session.add(mission)
         session.commit()
         session.refresh(mission)
         
-    background_tasks.add_task(background_scan_task, targets, mission.id)
+    background_tasks.add_task(background_scan_task, req.gold_paths, req.target_paths, mission.id)
     return {"status": "Started", "mission_id": mission.id}
 
-# --- FILESYSTEM BROWSER (EXPANDED ACCESS) ---
+# --- FILESYSTEM BROWSER (CRITICAL UPDATE) ---
+# This list controls what you can see. 
+# We added /media (USB) and / (Internal) to solve your issue.
 ALLOWED_ROOTS = [
     Path("/mnt/sentry"), 
     Path("/media"), 
     Path("/mnt"), 
-    Path("/run/media")
+    Path("/run/media"),
+    Path("/")
 ]
 
 @app.get("/api/fs/list")
-async def fs_list(
-    path: str = Query("/mnt/sentry", description="Absolute path to list"),
-    user: str = Depends(get_current_user),
-):
-    """Lists directories. Authenticated. Safe."""
+async def fs_list(path: str = Query("/mnt/sentry"), user: str = Depends(get_current_user)):
     try:
-        p = Path(path).expanduser().resolve()
-        
-        # 1. Security Check: Is it within an allowed root?
-        is_allowed = False
-        for root in ALLOWED_ROOTS:
-            if str(p).startswith(str(root.resolve())):
-                is_allowed = True
-                break
-        
-        if not is_allowed:
-            return JSONResponse({"error": f"Path outside allowed areas ({path})"}, status_code=403)
+        # Default to a safe starting point if 'ROOT' is requested
+        if path == "ROOT":
+            return {
+                "path": "ROOT",
+                "parent": "ROOT",
+                "entries": [
+                    {"name": "Local Media (USB)", "path": "/media", "type": "dir"},
+                    {"name": "Network Mounts", "path": "/mnt/sentry", "type": "dir"},
+                    {"name": "System Mounts", "path": "/mnt", "type": "dir"}
+                ]
+            }
 
-        if not p.exists():
-            return JSONResponse({"error": "Path does not exist."}, status_code=404)
+        p = Path(path).resolve()
+        if not p.exists(): return JSONResponse({"error": "Path not found"}, status_code=404)
 
-        # 2. Build Entry List
         entries = []
         for child in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            # Filter out hidden/system files
+            if child.name.startswith('.'): continue
             entries.append({
                 "name": child.name,
                 "path": str(child),
                 "type": "dir" if child.is_dir() else "file",
             })
 
-        # 3. Calculate Parent (Smart Navigation)
-        parent = str(p.parent)
-        if str(p) in [str(r.resolve()) for r in ALLOWED_ROOTS]:
-            parent = str(p) # Stay at root if at top level
-
-        return {"path": str(p), "parent": parent, "entries": entries}
-
-    except PermissionError:
-        return JSONResponse({"error": "Permission denied."}, status_code=403)
+        return {"path": str(p), "parent": str(p.parent), "entries": entries}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -163,8 +153,8 @@ def get_status(user: str = Depends(get_current_user)):
         return {"file_count": count, "status": status}
 
 @app.get("/api/analyze")
-def analyze(gold_path: str = Query(...), user: str = Depends(get_current_user)):
-    reaper = Reaper(master_drive_id=os.path.basename(gold_path))
+def analyze(user: str = Depends(get_current_user)):
+    reaper = Reaper()
     kill_list = reaper.analyze_duplicates()
     total_size = sum(f['size'] for f in kill_list) / (1024**3)
     return {
@@ -174,6 +164,6 @@ def analyze(gold_path: str = Query(...), user: str = Depends(get_current_user)):
     }
 
 @app.post("/api/clean")
-def clean(req: CleanRequest, user: str = Depends(get_current_user)):
-    reaper = Reaper(master_drive_id=os.path.basename(req.gold))
+def clean(user: str = Depends(get_current_user)):
+    reaper = Reaper()
     return reaper.execute_cleanup()

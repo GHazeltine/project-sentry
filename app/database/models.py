@@ -23,7 +23,7 @@ class FileRecord(SQLModel, table=True):
     created_at: float
     file_hash: Optional[str] = Field(index=True)
     visual_hash: Optional[str] = None
-    tag: str
+    tag: str  # <--- CRITICAL NEW FIELD
 
 def init_db():
     SQLModel.metadata.create_all(engine)

@@ -20,7 +20,9 @@ class Scanner:
         except: return None
 
     def scan_directory(self, root_path: str, tag: str, drive_id: str):
+        print(f"[Scanner] Indexing {root_path} as {tag}...")
         visual_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.gif'}
+        
         with Session(engine) as session:
             count = 0
             for root, dirs, files in os.walk(root_path):
@@ -32,12 +34,14 @@ class Scanner:
                         ext = Path(fname).suffix.lower()
                         f_hash = self.calculate_hash(fpath)
                         v_hash = self.ai.get_visual_hash(fpath) if ext in visual_exts else None
+                        
                         rec = FileRecord(
                             mission_id=self.mission_id, drive_id=drive_id,
                             path=fpath, filename=fname, extension=ext,
                             size_bytes=os.path.getsize(fpath),
                             created_at=time.time(), file_hash=f_hash,
-                            visual_hash=v_hash, tag=tag
+                            visual_hash=v_hash, 
+                            tag=tag # <--- Stores the critical tag
                         )
                         session.add(rec)
                         count += 1
