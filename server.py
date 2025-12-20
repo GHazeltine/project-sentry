@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import List
 from fastapi import FastAPI, Request, BackgroundTasks, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -15,7 +15,8 @@ from app.database.models import init_db, engine, ScanMission, FileRecord
 from app.core.drive_manager import DriveManager
 from app.core.scanner import Scanner
 from app.core.reaper import Reaper
-from app.core.janitor import Janitor  # <--- NEW IMPORT
+from app.core.janitor import Janitor
+from app.core.reporter import Reporter  # <--- NEW IMPORT
 
 app = FastAPI(title="Project Sentry | Command Center")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +47,7 @@ class ScanRequest(BaseModel):
     gold_paths: List[str]
     target_paths: List[str]
 
-class CleanRequest(BaseModel):     # <--- NEW MODEL
+class CleanRequest(BaseModel):
     target_paths: List[str]
 
 # --- BACKGROUND TASKS ---
@@ -156,16 +157,41 @@ def analyze(user: str = Depends(get_current_user)):
 
 @app.post("/api/clean")
 def clean(req: CleanRequest, user: str = Depends(get_current_user)):
-    # 1. Reaper: Delete Files
+    # 1. Execute Reaper (Delete Duplicates)
     reaper = Reaper()
     cleanup_stats = reaper.execute_cleanup()
 
-    # 2. Janitor: Delete Empty Folders (Ghostbusting)
+    # 2. Execute Janitor (Delete Ghost Folders)
     janitor = Janitor()
     ghosts_removed = janitor.cleanup_ghosts(req.target_paths)
     
+    # 3. Generate Report (PDF)
+    reporter = Reporter()
+    
+    # Retrieve stats for the report
+    with Session(engine) as session:
+        total_scanned = session.exec(select(func.count(FileRecord.id))).one()
+        latest_mission = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
+        mission_id = latest_mission.id if latest_mission else 0
+
+    pdf_path = reporter.generate_report(
+        mission_id=mission_id,
+        total_scanned=total_scanned,
+        duplicates_removed=cleanup_stats['deleted'],
+        ghost_folders=ghosts_removed,
+        target_paths=req.target_paths
+    )
+    
     return {
         "files_deleted": cleanup_stats['deleted'],
-        "file_errors": cleanup_stats['errors'],
-        "ghost_folders_removed": ghosts_removed
+        "ghost_folders_removed": ghosts_removed,
+        "report_url": f"/reports/{os.path.basename(pdf_path)}"
     }
+
+# NEW: Endpoint to download the generated PDF
+@app.get("/reports/{filename}")
+def download_report(filename: str, user: str = Depends(get_current_user)):
+    file_path = os.path.join("/app/reports", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type='application/pdf', filename=filename)
+    raise HTTPException(status_code=404, detail="Report not found")

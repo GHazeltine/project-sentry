@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SENTRY COMMAND | TREE VIEW</title>
+  <title>SENTRY COMMAND | REPORTING ACTIVE</title>
   <style>
     :root { --neon: #00ff41; --gold: #ffd700; --dark: #0d1117; --panel: #161b22; --danger: #ff3333; --highlight: #1f6feb; }
     body { background: var(--dark); color: #c9d1d9; font-family: 'Courier New', monospace; padding: 20px; }
@@ -20,6 +20,7 @@
     .btn-gold { background: var(--gold); color: black; border: none; }
     .btn-neon { background: var(--neon); color: black; border: none; }
     .btn-danger { background: var(--danger); color: white; border: none; }
+    .btn-report { background: white; color: black; border: 2px solid var(--neon); display:none; }
 
     .tree-container { flex-grow: 1; background: #0b0f14; border: 1px solid #30363d; overflow-y: auto; padding: 10px; font-size: 0.9em; }
     .tree-row { display: flex; align-items: center; cursor: pointer; padding: 2px 0; }
@@ -92,6 +93,7 @@
         <button class="btn-neon" onclick="startScan()">🔍 START SCAN</button>
         <button onclick="analyze()" id="btnAnalyze" disabled>💀 ANALYZE</button>
         <button class="btn-danger" onclick="clean()" id="btnClean" disabled>⚠️ EXECUTE REAPER</button>
+        <a id="btnReport" class="btn-report" target="_blank" style="text-align:center; text-decoration:none; padding:10px; font-weight:bold; margin-top:5px;">📄 DOWNLOAD REPORT</a>
       </div>
     </div>
 
@@ -116,7 +118,6 @@
     const select = document.getElementById('driveJump');
     select.innerHTML = '<option value="NONE">-- SELECT HARDWARE --</option>';
     
-    // Special Roots
     const specials = [
       { name: "💻 HOST COMPUTER (OS Drive)", path: "/host_fs" },
       { name: "🔌 USB DRIVES (/media)", path: "/media" },
@@ -124,14 +125,12 @@
     ];
     specials.forEach(d => select.add(new Option(d.name, d.path)));
 
-    // Real Hardware
     try {
       const drives = await api('/api/drives');
       if (Array.isArray(drives)) {
         select.add(new Option("--- PHYSICAL DRIVES ---", "NONE", true, true));
         drives.forEach(d => {
             if (d.mountpoint) {
-                // FIXED: Check prefix to avoid duplication
                 let finalPath = d.mountpoint;
                 if (!finalPath.startsWith('/host_fs')) {
                      finalPath = finalPath === "/" ? "/host_fs" : `/host_fs${finalPath}`;
@@ -169,7 +168,6 @@
     rootNode.appendChild(rootRow);
     container.appendChild(rootNode);
 
-    // Children
     await loadFolder(rootPath, container);
   }
 
@@ -288,14 +286,19 @@
   }
 
   async function clean() {
-    if(!confirm("WARNING: This will delete files AND empty folders from TARGETS. Confirm?")) return;
+    if(!confirm("DELETE TARGET FILES? This will also remove empty folders.")) return;
     
-    // We send targetPaths to the API so the Janitor knows where to clean
-    const res = await api('/api/clean', 'POST', { 
-      target_paths: Array.from(targetPaths) 
-    });
+    document.getElementById('btnClean').innerText = "CLEANING...";
+    document.getElementById('btnClean').disabled = true;
+
+    const res = await api('/api/clean', 'POST', { target_paths: Array.from(targetPaths) });
     
     alert(`Cleanup Complete!\nFiles Deleted: ${res.files_deleted}\nGhost Folders Removed: ${res.ghost_folders_removed}`);
+    
+    // Enable Report Button
+    const btnReport = document.getElementById('btnReport');
+    btnReport.href = res.report_url;
+    btnReport.style.display = 'block';
   }
 
   // Init

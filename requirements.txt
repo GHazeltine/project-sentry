@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+requests
+pillow
+numpy
+sqlmodel
+reportlab==4.0.7
