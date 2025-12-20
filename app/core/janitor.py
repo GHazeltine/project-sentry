@@ -1,5 +1,3 @@
-# Overwrite app/core/janitor.py with the new version
-cat > app/core/janitor.py << 'EOF'
 import os
 
 class Janitor:
@@ -28,4 +26,3 @@ class Janitor:
                     print(f"[Janitor] Failed to remove {dirpath}: {e}")
                     
         return removed_count
-EOF
