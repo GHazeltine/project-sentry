@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SENTRY COMMAND | REPORTING ACTIVE</title>
+  <title>SENTRY COMMAND | AI ACTIVE</title>
   <style>
     :root { --neon: #00ff41; --gold: #ffd700; --dark: #0d1117; --panel: #161b22; --danger: #ff3333; --highlight: #1f6feb; }
     body { background: var(--dark); color: #c9d1d9; font-family: 'Courier New', monospace; padding: 20px; }
@@ -90,10 +90,26 @@
       <div class="card" style="flex-grow: 0;">
         <h3>⚡ 5. EXECUTION</h3>
         <div id="statusBox" style="text-align:center; margin-bottom:10px; font-weight:bold;">IDLE</div>
+        
+        <div style="margin-bottom: 10px; background: #21262d; padding: 5px; border-radius: 4px;">
+          <label style="cursor: pointer; display: flex; align-items: center; color: var(--gold);">
+            <input type="checkbox" id="chkPrivacy" style="width: auto; margin-right: 10px;"> 
+            👁️ Enable AI Privacy Scan?
+          </label>
+        </div>
+
         <button class="btn-neon" onclick="startScan()">🔍 START SCAN</button>
         <button onclick="analyze()" id="btnAnalyze" disabled>💀 ANALYZE</button>
         <button class="btn-danger" onclick="clean()" id="btnClean" disabled>⚠️ EXECUTE REAPER</button>
+        
         <a id="btnReport" class="btn-report" target="_blank" style="text-align:center; text-decoration:none; padding:10px; font-weight:bold; margin-top:5px;">📄 DOWNLOAD REPORT</a>
+
+        <div id="privacyPanel" class="card" style="display:none; margin-top: 10px; border-color: var(--neon);">
+          <h3 style="color: var(--neon)">🚩 PRIVACY REVIEW</h3>
+          <div style="font-size: 0.8em; color: gray;">The AI found sensitive content.</div>
+          <div id="flaggedList" class="list-box" style="height: 100px;"></div>
+          <button class="btn-neon" onclick="executeQuarantine()" style="margin-top:5px;">🔐 MOVE TO VAULT</button>
+        </div>
       </div>
     </div>
 
@@ -267,15 +283,31 @@
     if(currentRoot.includes('mnt')) refreshTree();
   }
 
+  // --- EXECUTION & AI LOGIC ---
+
   async function startScan() {
     if (goldPaths.size === 0 || targetPaths.size === 0) return alert("Select GOLD and TARGET.");
+    
+    // Check if Privacy Scan is enabled
+    const usePrivacy = document.getElementById('chkPrivacy').checked;
+    
     document.getElementById('statusBox').innerText = "STARTING...";
-    await api('/api/scan', 'POST', { gold_paths: [...goldPaths], target_paths: [...targetPaths] });
+    await api('/api/scan', 'POST', { 
+        gold_paths: [...goldPaths], 
+        target_paths: [...targetPaths],
+        enable_privacy: usePrivacy 
+    });
     
     const t = setInterval(async () => {
       const s = await api('/api/status');
       document.getElementById('statusBox').innerText = `${s.status} | Files: ${s.file_count}`;
-      if (s.status === 'COMPLETE') { clearInterval(t); document.getElementById('btnAnalyze').disabled = false; }
+      if (s.status === 'COMPLETE') { 
+          clearInterval(t); 
+          document.getElementById('btnAnalyze').disabled = false;
+          
+          // Check for sensitive files immediately
+          if(usePrivacy) checkPrivacyFlags();
+      }
     }, 1000);
   }
 
@@ -295,10 +327,31 @@
     
     alert(`Cleanup Complete!\nFiles Deleted: ${res.files_deleted}\nGhost Folders Removed: ${res.ghost_folders_removed}`);
     
-    // Enable Report Button
     const btnReport = document.getElementById('btnReport');
     btnReport.href = res.report_url;
     btnReport.style.display = 'block';
+  }
+
+  // --- STAGING AREA LOGIC ---
+  async function checkPrivacyFlags() {
+      const flagged = await api('/api/privacy/review');
+      if (flagged.length > 0) {
+          const panel = document.getElementById('privacyPanel');
+          const list = document.getElementById('flaggedList');
+          panel.style.display = 'flex';
+          list.innerHTML = '';
+          flagged.forEach(f => {
+              list.innerHTML += `<div class="list-item" style="color: #ffcc00;">⚠️ ${f.filename}</div>`;
+          });
+          alert(`⚠️ AI ALERT: Found ${flagged.length} sensitive files. Please Review.`);
+      }
+  }
+
+  async function executeQuarantine() {
+      if(!confirm("Move these files to a secure vault folder?")) return;
+      const res = await api('/api/privacy/quarantine', 'POST', {});
+      alert(`Secured ${res.count} files.`);
+      document.getElementById('privacyPanel').style.display = 'none';
   }
 
   // Init
