@@ -38,3 +38,22 @@ class FileRecord(SQLModel, table=True):
     file_hash: Optional[str] = Field(index=True) # Preserved
     visual_hash: Optional[str] = None            # Ready for AI features
     tag: str                    # 'MASTER' or 'TARGET'
+
+class FileTransaction(SQLModel, table=True):
+    """
+    The Undo Log.
+    Records every time the AI moves or renames a file.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    mission_id: int = Field(foreign_key="scanmission.id")
+    timestamp: float
+    
+    # What happened?
+    action_type: str  # 'GROUP_RAW', 'PRIVACY_MOVE', 'RESTORE'
+    
+    # The Move
+    src_path: str
+    dest_path: str
+    
+    # Status
+    status: str = "COMPLETED"  # or 'REVERSED'
