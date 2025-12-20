@@ -1,10 +1,24 @@
 import os
 from typing import Optional
-from sqlmodel import Field, SQLModel, create_engine
+from sqlmodel import SQLModel, Field, create_engine
 
-sqlite_file_name = os.getenv("SENTRY_DB_PATH", "/data/sentry.db")
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+# --- V3 DATABASE CONNECTION LOGIC ---
+# This intelligently switches between SQLite (Old) and PostgreSQL (New)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/sentry.db")
+
+# Postgres requires different arguments than SQLite
+if "sqlite" in DATABASE_URL:
+    connect_args = {"check_same_thread": False}
+else:
+    connect_args = {}
+
+# Create the Engine
+engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
+
+def init_db():
+    SQLModel.metadata.create_all(engine)
+
+# --- DATA MODELS (Preserved V2 Structure) ---
 
 class ScanMission(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -19,11 +33,8 @@ class FileRecord(SQLModel, table=True):
     path: str
     filename: str
     extension: str
-    size_bytes: int
+    size_bytes: int             # Preserved
     created_at: float
-    file_hash: Optional[str] = Field(index=True)
-    visual_hash: Optional[str] = None
-    tag: str  # <--- CRITICAL NEW FIELD
-
-def init_db():
-    SQLModel.metadata.create_all(engine)
+    file_hash: Optional[str] = Field(index=True) # Preserved
+    visual_hash: Optional[str] = None            # Ready for AI features
+    tag: str                    # 'MASTER' or 'TARGET'

@@ -1,12 +1,30 @@
 version: '3.8'
 
 services:
+  # 1. THE BRAIN (PostgreSQL Database)
+  sentry-db:
+    image: postgres:15-alpine
+    container_name: sentry-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=sentry_admin
+      - POSTGRES_PASSWORD=sentry_secure_pass
+      - POSTGRES_DB=sentry_v3
+    volumes:
+      - sentry_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry_admin -d sentry_v3"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. THE BODY (Sentry Core)
   sentry-core:
     build: .
     container_name: sentry-core
     restart: unless-stopped
     
-    # HARDWARE ACCESS
+    # HARDWARE ACCESS (For Drives & Hailo)
     privileged: true
     cap_add:
       - SYS_ADMIN
@@ -17,21 +35,23 @@ services:
     ports:
       - "8000:8000"
       
+    depends_on:
+      sentry-db:
+        condition: service_healthy
+      
     environment:
       - SENTRY_USER=${SENTRY_USER:-admin}
       - SENTRY_PASS=${SENTRY_PASS:-change-this-now}
-      - SENTRY_DB_PATH=/data/sentry.db
+      # CONNECT TO THE NEW DB CONTAINER
+      - DATABASE_URL=postgresql://sentry_admin:sentry_secure_pass@sentry-db:5432/sentry_v3
       
     volumes:
-      # CODE MAPPING (Live Updates)
       - .:/app
-      
-      # DATA PERSISTENCE
-      - ./_db:/data
-      
-      # SYSTEM VISIBILITY
       - /mnt/sentry:/mnt/sentry:shared
       - /media:/media:rslave
       - /mnt:/mnt:rslave
       - /run/media:/run/media:rslave
       - /:/host_fs:rslave
+
+volumes:
+  sentry_pg_data:

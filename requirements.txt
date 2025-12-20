@@ -7,3 +7,4 @@ pillow
 numpy
 sqlmodel
 reportlab==4.0.7
+psycopg2-binary
