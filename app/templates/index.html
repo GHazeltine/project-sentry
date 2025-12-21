@@ -1,264 +1,324 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>SENTRY COMMAND | AI ACTIVE</title>
-    <style>
-        :root {
-            --bg-dark: #0f1115;
-            --panel-bg: #161b22;
-            --border: #30363d;
-            --text-main: #c9d1d9;
-            --gold: #f1e05a;
-            --green: #2ea043;
-            --red: #da3633;
-            --blue: #58a6ff;
-        }
-        body { background: var(--bg-dark); color: var(--text-main); font-family: 'Segoe UI', monospace; margin: 0; padding: 20px; height: 100vh; overflow: hidden; }
-        
-        /* LAYOUT GRID */
-        .grid-container {
-            display: grid;
-            grid-template-columns: 300px 1fr 350px;
-            gap: 20px;
-            height: 95vh;
-        }
-        
-        /* PANELS */
-        .panel { background: var(--panel-bg); border: 1px solid var(--border); border-radius: 6px; padding: 15px; display: flex; flex-direction: column; }
-        .panel-header { font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
-        
-        .scroll-area { overflow-y: auto; flex-grow: 1; background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 5px; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SENTRY COMMAND | REPORTING ACTIVE</title>
+  <style>
+    :root { --neon: #00ff41; --gold: #ffd700; --dark: #0d1117; --panel: #161b22; --danger: #ff3333; --highlight: #1f6feb; }
+    body { background: var(--dark); color: #c9d1d9; font-family: 'Courier New', monospace; padding: 20px; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    
+    .grid { display: grid; grid-template-columns: 350px 1fr 350px; gap: 20px; height: 85vh; }
+    .col { display: flex; flex-direction: column; gap: 15px; }
+    .card { background: var(--panel); border: 1px solid #30363d; padding: 15px; border-radius: 6px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
+    h3 { margin: 0 0 10px 0; border-bottom: 1px solid #30363d; padding-bottom: 5px; font-size: 1.1em; }
+    
+    input, select { background: #0b0f14; color: white; border: 1px solid #30363d; padding: 8px; width: 100%; box-sizing: border-box; }
+    button { background: #21262d; color: white; border: 1px solid #30363d; padding: 10px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }
+    button:hover { background: #30363d; }
+    .btn-gold { background: var(--gold); color: black; border: none; }
+    .btn-neon { background: var(--neon); color: black; border: none; }
+    .btn-danger { background: var(--danger); color: white; border: none; }
+    .btn-report { background: white; color: black; border: 2px solid var(--neon); display:none; }
 
-        /* HARDWARE / MOUNT BUTTONS */
-        .drive-item { 
-            background: #21262d; padding: 8px; margin-bottom: 5px; border-radius: 4px; border: 1px solid #30363d; 
-            display: flex; justify-content: space-between; align-items: center; font-size: 0.85em;
-        }
-        .btn-mount { padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8em; }
-        .mount-go { background: var(--blue); color: #fff; }
-        .mount-done { background: var(--green); color: #fff; }
-
-        /* BROWSER ITEMS */
-        .file-item { padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-        .file-item:hover { background: #21262d; }
-        .selected { background: #1f6feb !important; color: white; }
-        
-        /* LISTS (Gold/Target) */
-        .list-item { padding: 5px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; font-size: 0.9em; }
-        
-        /* BUTTONS */
-        .btn { width: 100%; padding: 10px; border: none; font-weight: bold; cursor: pointer; color: white; margin-top: 5px; border-radius: 4px; }
-        .btn-gold { background: var(--gold); color: #000; }
-        .btn-target { background: var(--green); }
-        .btn-exec { background: var(--red); font-size: 1.1em; padding: 15px; margin-top: 20px; }
-
-        .status-bar { margin-top: 10px; text-align: center; color: #8b949e; font-size: 0.9em; }
-    </style>
+    .tree-container { flex-grow: 1; background: #0b0f14; border: 1px solid #30363d; overflow-y: auto; padding: 10px; font-size: 0.9em; }
+    .tree-row { display: flex; align-items: center; cursor: pointer; padding: 2px 0; }
+    .tree-row:hover { background: #161b22; }
+    .tree-row.selected { background: var(--highlight); color: white; }
+    .caret { width: 20px; text-align: center; cursor: pointer; color: var(--neon); font-weight: bold; }
+    .hidden { display: none; }
+    
+    .list-box { background: black; border: 1px solid #30363d; flex-grow: 1; overflow-y: auto; padding: 5px; }
+    .list-item { padding: 5px; border-bottom: 1px solid #222; font-size: 0.85em; display: flex; justify-content: space-between; }
+    .remove-x { color: red; cursor: pointer; font-weight: bold; margin-left: 5px; }
+  </style>
 </head>
 <body>
-
-<div class="grid-container">
+<div class="container">
+  <div class="grid">
     
-    <div style="display:flex; flex-direction:column; gap:20px;">
-        
-        <div class="panel" style="flex-grow:0">
-            <div class="panel-header">🔌 0. HARDWARE MOUNT</div>
-            <div id="drive-list">Loading USBs...</div>
-            <button onclick="refreshDrives()" style="background:#21262d; border:1px solid #30363d; color:#8b949e; width:100%; margin-top:5px; padding:5px; cursor:pointer">↻ Refresh</button>
+    <div class="col">
+      <div class="card" style="flex-grow: 0;">
+        <h3>🔌 1. CONNECT</h3>
+        <input id="netPath" placeholder="//SERVER/Share" style="margin-bottom:5px;">
+        <div style="display:flex; gap:5px;">
+          <input id="netUser" placeholder="User" style="width:50%;">
+          <input id="netPass" type="password" placeholder="Pass" style="width:50%;">
         </div>
-
-        <div class="panel" style="flex-grow:0">
-            <div class="panel-header">⚡ 1. CONNECT NETWORK</div>
-            <input type="text" placeholder="//SERVER/Share" style="width:100%; margin-bottom:5px; background:#0d1117; border:1px solid #30363d; color:white; padding:5px;">
-            <button class="btn" style="background:#21262d">Mount Network Drive</button>
-        </div>
-
-        <div class="panel" style="flex-grow:1">
-            <div class="panel-header" style="color:var(--gold)">🛡️ 3. GOLD (PROTECTED)</div>
-            <div class="scroll-area" id="gold-list-area"></div>
-            <button class="btn" style="background:#21262d" onclick="clearList('gold')">Clear List</button>
-        </div>
+        <button onclick="mountNetwork()" style="margin-top:5px;">Mount Network Drive</button>
+      </div>
+      <div class="card">
+        <h3 style="color: var(--gold)">🛡️ 3. GOLD (PROTECTED)</h3>
+        <div class="list-box" id="goldList"></div>
+        <button onclick="clearList('gold')">Clear List</button>
+      </div>
     </div>
 
-    <div class="panel">
-        <div class="panel-header">
-            📁 2. SOURCE SELECTION
-            <span id="current-path" style="font-weight:normal; font-size:0.8em; margin-left:auto; color:#8b949e">/</span>
+    <div class="col">
+      <div class="card">
+        <h3>📂 2. SOURCE SELECTION</h3>
+        
+        <div style="display:flex; gap:5px; margin-bottom:10px; border-bottom:1px solid #30363d; padding-bottom:10px;">
+             <input id="mountDev" placeholder="/dev/sda1" value="/dev/sda1" style="flex-grow:1">
+             <button onclick="mountUsb()" style="width:auto; margin:0; background:#1f6feb;">MOUNT USB</button>
         </div>
-        
-        <div class="file-item" onclick="goUp()" style="border-bottom:1px solid #30363d; margin-bottom:5px">⬆️ .. (Go Up)</div>
-        
-        <div class="scroll-area" id="file-browser"></div>
 
-        <div style="display:flex; gap:10px; margin-top:10px;">
-            <button class="btn btn-gold" onclick="addSelection('gold')">🛡️ ADD TO GOLD</button>
-            <button class="btn btn-target" onclick="addSelection('target')">🎯 ADD TO TARGET</button>
+        <select id="driveJump" onchange="initTree(this.value)">
+          <option value="NONE">-- LOADING HARDWARE... --</option>
+        </select>
+        
+        <div style="display:flex; justify-content:space-between; margin:5px 0;">
+          <span id="currentRoot" style="color:gray; font-size:0.8em;">Select a drive...</span>
+          <button onclick="refreshTree()" style="padding:2px 8px;">↻</button>
         </div>
+
+        <div class="tree-container" id="treeRoot">
+          <div style="padding:20px; text-align:center; color:gray;">Select a Drive above.</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+          <button class="btn-gold" onclick="addSelection('gold')">🛡️ ADD TO GOLD</button>
+          <button class="btn-neon" onclick="addSelection('target')">🎯 ADD TO TARGET</button>
+        </div>
+      </div>
     </div>
 
-    <div class="panel">
-        <div class="panel-header" style="color:var(--green)">🎯 4. TARGETS</div>
-        <div class="scroll-area" id="target-list-area"></div>
-        <button class="btn" style="background:#21262d" onclick="clearList('target')">Clear List</button>
+    <div class="col">
+      <div class="card">
+        <h3 style="color: var(--neon)">🎯 4. TARGETS (TO BE CLEANED)</h3>
+        <div class="list-box" id="targetList"></div>
+        <div style="font-size:0.8em; color:gray; margin-top:5px;">Duplicates here will be deleted.</div>
+        <button onclick="clearList('target')">Clear List</button>
+      </div>
 
-        <div style="margin-top:20px; border-top:1px solid #30363d; padding-top:20px;">
-            <div class="panel-header">⚡ 5. EXECUTION</div>
-            
-            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; background:#21262d; padding:10px; border-radius:4px;">
-                <input type="checkbox" id="privacy-toggle" checked>
-                <span>👁️ Enable AI Privacy Scan?</span>
-            </label>
-
-            <button class="btn btn-exec" onclick="startMission()">🚀 START SCAN</button>
-            <div class="status-bar" id="status-text">SYSTEM IDLE</div>
-        </div>
+      <div class="card" style="flex-grow: 0;">
+        <h3>⚡ 5. EXECUTION</h3>
+        <div id="statusBox" style="text-align:center; margin-bottom:10px; font-weight:bold;">IDLE</div>
+        <button class="btn-neon" onclick="startScan()">🔍 START SCAN</button>
+        <button onclick="analyze()" id="btnAnalyze" disabled>💀 ANALYZE</button>
+        <button class="btn-danger" onclick="clean()" id="btnClean" disabled>⚠️ EXECUTE REAPER</button>
+        <a id="btnReport" class="btn-report" target="_blank" style="text-align:center; text-decoration:none; padding:10px; font-weight:bold; margin-top:5px;">📄 DOWNLOAD REPORT</a>
+      </div>
     </div>
 
+  </div>
 </div>
 
 <script>
-    // STATE
-    let currentPath = '/media'; // Default to media so they see drives immediately
-    let selectedFile = null;
-    let goldPaths = [];
-    let targetPaths = [];
+  let selectedPath = null;
+  let goldPaths = new Set();
+  let targetPaths = new Set();
+  let currentRoot = "";
 
-    // --- 1. HARDWARE ---
-    async function refreshDrives() {
-        const div = document.getElementById('drive-list');
-        div.innerHTML = 'Scanning...';
-        try {
-            const res = await fetch('/api/drives');
-            const drives = await res.json();
-            div.innerHTML = '';
-            
-            drives.forEach(d => {
-                // Only show real disks
-                if(d.device.startsWith('/dev/sd')) {
-                    const btnClass = d.is_mounted ? 'mount-done' : 'mount-go';
-                    const btnText = d.is_mounted ? 'UNMOUNT' : 'MOUNT';
-                    const action = d.is_mounted ? 'false' : 'true';
-                    
-                    div.innerHTML += `
-                        <div class="drive-item">
-                            <div>
-                                <div>${d.device} (${d.size})</div>
-                                <div style="color:${d.health.includes('PASSED')?'var(--green)':'var(--red)'}">${d.health}</div>
-                            </div>
-                            <button class="btn-mount ${btnClass}" onclick="toggleMount('${d.device}', ${action})">${btnText}</button>
-                        </div>
-                    `;
-                }
-            });
-            if(div.innerHTML === '') div.innerHTML = '<div style="color:#888; padding:10px">No USB Drives Found</div>';
-        } catch(e) { div.innerHTML = 'Error loading drives'; }
-    }
+  async function api(url, method='GET', body=null) {
+    const opts = { method, headers: {'Content-Type': 'application/json'} };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    return r.json();
+  }
 
-    async function toggleMount(dev, doMount) {
-        const ep = doMount ? '/api/drives/mount' : '/api/drives/unmount';
-        await fetch(ep, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({device_path: dev})
-        });
-        setTimeout(() => { refreshDrives(); loadBrowser('/media'); }, 1000);
-    }
-
-    // --- 2. BROWSER ---
-    async function loadBrowser(path) {
-        currentPath = path;
-        document.getElementById('current-path').innerText = path;
-        const container = document.getElementById('file-browser');
-        container.innerHTML = 'Loading...';
-        
-        try {
-            const res = await fetch(`/api/fs/list?path=${encodeURIComponent(path)}`);
-            const data = await res.json();
-            container.innerHTML = '';
-            
-            data.entries.forEach(e => {
-                const icon = e.type === 'dir' ? '📁' : '📄';
-                const el = document.createElement('div');
-                el.className = 'file-item';
-                el.innerHTML = `<span>${icon}</span> ${e.name}`;
-                
-                el.onclick = () => {
-                    if(e.type === 'dir') loadBrowser(e.path);
-                    else {
-                        selectedFile = e.path; // Select file
-                        // Visual selection logic could go here
-                    }
-                };
-                
-                // RIGHT CLICK to select folder as target/gold without entering
-                el.oncontextmenu = (ev) => {
-                    ev.preventDefault();
-                    selectedFile = e.path;
-                    alert("Selected: " + e.path);
-                };
-
-                container.appendChild(el);
-            });
-        } catch(e) { container.innerHTML = 'Access Denied'; }
-    }
-
-    function goUp() {
-        const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
-        loadBrowser(parent);
-    }
-
-    // --- 3. LIST MANAGEMENT ---
-    function addSelection(type) {
-        // If nothing clicked, use CURRENT FOLDER
-        const pathToAdd = selectedFile || currentPath;
-        
-        if(type === 'gold') {
-            if(!goldPaths.includes(pathToAdd)) goldPaths.push(pathToAdd);
-            renderList('gold-list-area', goldPaths);
-        } else {
-            if(!targetPaths.includes(pathToAdd)) targetPaths.push(pathToAdd);
-            renderList('target-list-area', targetPaths);
-        }
-        selectedFile = null; // Reset
-    }
-
-    function renderList(id, arr) {
-        const div = document.getElementById(id);
-        div.innerHTML = '';
-        arr.forEach(p => {
-            div.innerHTML += `<div class="list-item"><span>${p.split('/').pop()}</span> <span style="color:red; cursor:pointer" onclick="removeItem('${id}', '${p}')">X</span></div>`;
-        });
-    }
-
-    // --- 4. EXECUTION ---
-    async function startMission() {
-        if(goldPaths.length === 0 || targetPaths.length === 0) { alert("Lists cannot be empty!"); return; }
-        
-        const res = await fetch('/api/scan', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({
-                gold_paths: goldPaths,
-                target_paths: targetPaths,
-                enable_privacy: document.getElementById('privacy-toggle').checked
-            })
-        });
-        const data = await res.json();
-        document.getElementById('status-text').innerText = "MISSION RUNNING: " + data.mission_id;
-    }
-
-    // INIT
-    refreshDrives();
-    loadBrowser('/media'); // Start in media so they see USBs
+  // --- HARDWARE ---
+  async function loadDrives() {
+    const select = document.getElementById('driveJump');
+    select.innerHTML = '<option value="NONE">-- SELECT HARDWARE --</option>';
     
-    // Status Poll
-    setInterval(async () => {
-        const res = await fetch('/api/status');
-        const d = await res.json();
-        if(d.status !== 'IDLE') document.getElementById('status-text').innerText = `STATUS: ${d.status} | FILES: ${d.file_count}`;
-    }, 2000);
+    const specials = [
+      { name: "💻 HOST COMPUTER (OS Drive)", path: "/host_fs" },
+      { name: "🔌 USB DRIVES (/media)", path: "/media" },
+      { name: "🌐 NETWORK MOUNTS", path: "/mnt/sentry" }
+    ];
+    specials.forEach(d => select.add(new Option(d.name, d.path)));
 
+    try {
+      const drives = await api('/api/drives');
+      if (Array.isArray(drives)) {
+        select.add(new Option("--- PHYSICAL DRIVES ---", "NONE", true, true));
+        drives.forEach(d => {
+            if (d.mountpoint) {
+                let finalPath = d.mountpoint;
+                if (!finalPath.startsWith('/host_fs')) finalPath = finalPath === "/" ? "/host_fs" : `/host_fs${finalPath}`;
+                select.add(new Option(`💾 ${d.label || d.name} (${d.size})`, finalPath));
+            } else {
+                select.add(new Option(`⚠️ ${d.label || d.name} (Unmounted)`, "NONE", true, true));
+            }
+        });
+      }
+    } catch (e) { console.error("Drive detect fail", e); }
+  }
+
+  // --- NEW: MOUNT USB ---
+  async function mountUsb() {
+    const dev = document.getElementById('mountDev').value;
+    try {
+        const res = await api('/api/drives/mount', 'POST', { device_path: dev });
+        if(res.error) alert("Error: " + res.error);
+        else {
+            alert("Mounted to: " + res.mountpoint);
+            loadDrives(); // Refresh dropdown
+        }
+    } catch(e) { alert("Network Error"); }
+  }
+
+  // --- TREE VIEW ---
+  async function initTree(rootPath) {
+    if (rootPath === "NONE") return;
+    currentRoot = rootPath;
+    document.getElementById('currentRoot').innerText = "Viewing: " + rootPath;
+    const container = document.getElementById('treeRoot');
+    
+    container.innerHTML = "Loading...";
+    container.innerHTML = ''; 
+
+    // Header Node
+    const rootNode = document.createElement('div');
+    rootNode.className = 'tree-item';
+    rootNode.style.marginBottom = "5px";
+    rootNode.style.borderBottom = "1px solid #333";
+    
+    const rootRow = document.createElement('div');
+    rootRow.className = 'tree-row';
+    rootRow.innerHTML = `<span class="caret">▼</span><span class="icon">💾</span> <span style="font-weight:bold; color:var(--neon);">[SELECT ENTIRE DRIVE]</span>`;
+    rootRow.onclick = () => selectNode(rootRow, rootPath);
+    
+    rootNode.appendChild(rootRow);
+    container.appendChild(rootNode);
+
+    await loadFolder(rootPath, container);
+  }
+
+  function refreshTree() { initTree(currentRoot); }
+
+  async function loadFolder(path, container) {
+    const res = await api(`/api/fs/list?path=${encodeURIComponent(path)}`);
+    if (res.error) {
+        container.innerHTML += `<div style="color:red; padding:5px;">Error: ${res.error}</div>`;
+        return;
+    }
+    if (!res.entries || res.entries.length === 0) {
+        container.innerHTML += `<div style="color:gray; padding-left:20px;">(Empty)</div>`;
+        return;
+    }
+
+    res.entries.forEach(entry => {
+      const node = document.createElement('div');
+      node.style.marginLeft = "15px";
+      
+      const row = document.createElement('div');
+      row.className = 'tree-row';
+      row.onclick = (e) => {
+        if(!e.target.className.includes('caret')) selectNode(row, entry.path);
+      };
+
+      const caret = document.createElement('span');
+      caret.className = 'caret';
+      if (entry.type === 'dir') {
+        caret.innerText = '▶';
+        caret.onclick = () => toggleFolder(caret, childrenBox, entry.path);
+      } else {
+        caret.innerText = '•'; caret.style.color = 'gray';
+      }
+
+      row.innerHTML = `<span class="icon">${entry.type==='dir'?'📁':'📄'}</span> ${entry.name}`;
+      row.prepend(caret);
+      node.appendChild(row);
+
+      const childrenBox = document.createElement('div');
+      childrenBox.className = 'hidden';
+      node.appendChild(childrenBox);
+
+      container.appendChild(node);
+    });
+  }
+
+  async function toggleFolder(caret, container, path) {
+    if (container.classList.contains('hidden')) {
+      caret.innerText = '▼';
+      container.classList.remove('hidden');
+      if (container.innerHTML === '') {
+        container.innerHTML = '<div style="padding-left:20px; color:gray;">Loading...</div>';
+        await loadFolder(path, container);
+      }
+    } else {
+      caret.innerText = '▶';
+      container.classList.add('hidden');
+    }
+  }
+
+  function selectNode(row, path) {
+    document.querySelectorAll('.selected').forEach(e => e.classList.remove('selected'));
+    row.classList.add('selected');
+    selectedPath = path;
+  }
+
+  // --- ACTIONS ---
+  function addSelection(type) {
+    if (!selectedPath) return alert("Select a folder or [ENTIRE DRIVE] first.");
+    (type === 'gold' ? goldPaths : targetPaths).add(selectedPath);
+    renderLists();
+  }
+
+  function renderLists() {
+    const draw = (set, id, type) => {
+      const el = document.getElementById(id);
+      el.innerHTML = '';
+      set.forEach(p => {
+        el.innerHTML += `<div class="list-item"><span>${p}</span> <span class="remove-x" onclick="removePath('${type}','${p.replace(/\\/g,'\\\\')}')">X</span></div>`;
+      });
+    };
+    draw(goldPaths, 'goldList', 'gold');
+    draw(targetPaths, 'targetList', 'target');
+  }
+
+  function removePath(t, p) { (t==='gold'?goldPaths:targetPaths).delete(p); renderLists(); }
+  function clearList(t) { (t==='gold'?goldPaths:targetPaths).clear(); renderLists(); }
+
+  async function mountNetwork() {
+    const res = await api('/api/mount', 'POST', {
+      remote_path: document.getElementById('netPath').value,
+      username: document.getElementById('netUser').value,
+      password: document.getElementById('netPass').value
+    });
+    alert(res.message || "Done");
+    if(currentRoot.includes('mnt')) refreshTree();
+  }
+
+  async function startScan() {
+    if (goldPaths.size === 0 || targetPaths.size === 0) return alert("Select GOLD and TARGET.");
+    document.getElementById('statusBox').innerText = "STARTING...";
+    await api('/api/scan', 'POST', { gold_paths: [...goldPaths], target_paths: [...targetPaths] });
+    
+    const t = setInterval(async () => {
+      const s = await api('/api/status');
+      document.getElementById('statusBox').innerText = `${s.status} | Files: ${s.file_count}`;
+      if (s.status === 'COMPLETE') { clearInterval(t); document.getElementById('btnAnalyze').disabled = false; }
+    }, 1000);
+  }
+
+  async function analyze() {
+    const res = await api('/api/analyze');
+    alert(`Duplicates: ${res.count} (${res.size_gb} GB)`);
+    if(res.count > 0) document.getElementById('btnClean').disabled = false;
+  }
+
+  async function clean() {
+    if(!confirm("DELETE TARGET FILES? This will also remove empty folders.")) return;
+    
+    document.getElementById('btnClean').innerText = "CLEANING...";
+    document.getElementById('btnClean').disabled = true;
+
+    const res = await api('/api/clean', 'POST', { target_paths: Array.from(targetPaths) });
+    
+    alert(`Cleanup Complete!\nFiles Deleted: ${res.files_deleted}\nGhost Folders Removed: ${res.ghost_folders_removed}`);
+    
+    // Enable Report Button
+    const btnReport = document.getElementById('btnReport');
+    btnReport.href = res.report_url;
+    btnReport.style.display = 'block';
+  }
+
+  // Init
+  loadDrives();
 </script>
 </body>
 </html>
