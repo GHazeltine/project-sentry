@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, select, func
 from pydantic import BaseModel
+from sqlalchemy import func
 
 # Unified Core Imports
 from app.database.models import init_db, engine, ScanMission, FileRecord
@@ -46,29 +47,28 @@ class MountRequest(BaseModel):
 class ScanRequest(BaseModel):
     gold_paths: List[str]
     target_paths: List[str]
+    enable_privacy: bool = False  # <--- NEW CHECKBOX INPUT
 
 class CleanRequest(BaseModel):
     target_paths: List[str]
 
 # --- BACKGROUND TASKS ---
-def background_scan_task(gold_paths: List[str], target_paths: List[str], mission_id: int):
+
+def background_scan_task(gold_paths, target_paths, mission_id, enable_privacy): # <--- Add Arg
     scanner = Scanner(mission_id=mission_id)
     with Session(engine) as session:
         mission = session.get(ScanMission, mission_id)
         mission.status = "RUNNING"
         session.add(mission)
         session.commit()
-        try:
-            for path in gold_paths:
-                drive_id = os.path.basename(path)
-                scanner.scan_directory(path, tag="MASTER", drive_id=drive_id)
-            for path in target_paths:
-                drive_id = os.path.basename(path)
-                scanner.scan_directory(path, tag="TARGET", drive_id=drive_id)
-            mission.status = "COMPLETE"
-        except Exception as e:
-            print(f"Scan Error: {e}")
-            mission.status = "ERROR"
+        
+        # Pass the setting to the scanner
+        for path in gold_paths:
+            scanner.scan_directory(path, "MASTER", os.path.basename(path), False) # Gold never scanned for privacy
+        for path in target_paths:
+            scanner.scan_directory(path, "TARGET", os.path.basename(path), enable_privacy) # Only Target
+
+        mission.status = "COMPLETE"
         session.add(mission)
         session.commit()
 
@@ -92,16 +92,10 @@ def get_drives(user: str = Depends(get_current_user)):
 
 @app.post("/api/scan")
 async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
-    all_paths = req.gold_paths + req.target_paths
-    if not all_paths: return JSONResponse({"error": "No paths selected"}, status_code=400)
-
-    with Session(engine) as session:
-        mission = ScanMission(timestamp=time.time(), root_paths=";".join(all_paths), status="PENDING")
-        session.add(mission)
-        session.commit()
-        session.refresh(mission)
-        
-    background_tasks.add_task(background_scan_task, req.gold_paths, req.target_paths, mission.id)
+    # ... (Keep existing setup code) ...
+    
+    # Pass req.enable_privacy to the task
+    background_tasks.add_task(background_scan_task, req.gold_paths, req.target_paths, mission.id, req.enable_privacy)
     return {"status": "Started", "mission_id": mission.id}
 
 # --- FILESYSTEM BROWSER ---
@@ -137,12 +131,18 @@ async def fs_list(path: str = Query("/mnt/sentry"), user: str = Depends(get_curr
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/status")
-def get_status(user: str = Depends(get_current_user)):
+def get_status():
     with Session(engine) as session:
-        count = session.exec(select(func.count(FileRecord.id))).one()
-        latest = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
-        status = latest.status if latest else "IDLE"
-        return {"file_count": count, "status": status}
+        # Get the latest mission (The one currently running or just finished)
+        mission = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
+        
+        if not mission:
+            return {"status": "IDLE", "file_count": 0}
+        
+        # FIX: Count ONLY files belonging to this specific mission ID
+        count = session.exec(select(func.count(FileRecord.id)).where(FileRecord.mission_id == mission.id)).one()
+        
+        return {"status": mission.status, "file_count": count}
 
 @app.get("/api/analyze")
 def analyze(user: str = Depends(get_current_user)):
@@ -187,6 +187,60 @@ def clean(req: CleanRequest, user: str = Depends(get_current_user)):
         "ghost_folders_removed": ghosts_removed,
         "report_url": f"/reports/{os.path.basename(pdf_path)}"
     }
+
+@app.get("/api/privacy/review")
+def get_privacy_flags(user: str = Depends(get_current_user)):
+    """Staging Area: List all flagged files from the latest mission."""
+    with Session(engine) as session:
+        # Get latest mission
+        latest = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
+        if not latest: return []
+        
+        # Find flagged files
+        statement = select(FileRecord).where(
+            FileRecord.mission_id == latest.id, 
+            FileRecord.is_flagged == True
+        )
+        flagged = session.exec(statement).all()
+        return flagged
+
+@app.post("/api/privacy/quarantine")
+def execute_quarantine(user: str = Depends(get_current_user)):
+    """The Button Push: Moves all flagged files to the Vault."""
+    organizer = None
+    moved_count = 0
+    
+    with Session(engine) as session:
+        latest = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
+        if not latest: return {"error": "No mission found"}
+        
+        organizer = Organizer(latest.id)
+        
+        # Get flagged files
+        flagged = session.exec(select(FileRecord).where(
+            FileRecord.mission_id == latest.id, 
+            FileRecord.is_flagged == True
+        )).all()
+        
+        for record in flagged:
+            # Determine Vault Root (Root of the drive the file is on)
+            # We assume the 'path' starts with the mount point.
+            # For simplicity, we create the vault in the file's parent folder for now, 
+            # or we could put it at the root of the Target.
+            
+            # Let's put it in a safe folder parallel to the file for safety
+            vault_root = os.path.join(os.path.dirname(record.path), "SENTRY_VAULT")
+            
+            organizer.privacy_quarantine(record, vault_root)
+            
+            # Unflag it so it doesn't show up in review anymore
+            record.is_flagged = False
+            session.add(record)
+            moved_count += 1
+            
+        session.commit()
+        
+    return {"status": "Quarantined", "count": moved_count}
 
 # NEW: Endpoint to download the generated PDF
 @app.get("/reports/{filename}")

@@ -19,32 +19,60 @@ class Scanner:
             return h.hexdigest()
         except: return None
 
-    def scan_directory(self, root_path: str, tag: str, drive_id: str):
-        print(f"[Scanner] Indexing {root_path} as {tag}...")
-        visual_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.gif'}
+def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_enabled: bool = False):
+        print(f"[Scanner] Starting scan on: {root_path} (Privacy Scan Enabled: {privacy_scan_enabled})")
         
+        if not os.path.exists(root_path):
+            return
+
         with Session(engine) as session:
-            count = 0
-            for root, dirs, files in os.walk(root_path):
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                for fname in files:
-                    if fname.startswith('.'): continue
-                    fpath = os.path.join(root, fname)
+            for dirpath, _, filenames in os.walk(root_path):
+                for name in filenames:
+                    filepath = os.path.join(dirpath, name)
                     try:
-                        ext = Path(fname).suffix.lower()
-                        f_hash = self.calculate_hash(fpath)
-                        v_hash = self.ai.get_visual_hash(fpath) if ext in visual_exts else None
+                        stats = os.stat(filepath)
+                        file_hash = self.calculate_md5(filepath)
                         
-                        rec = FileRecord(
-                            mission_id=self.mission_id, drive_id=drive_id,
-                            path=fpath, filename=fname, extension=ext,
-                            size_bytes=os.path.getsize(fpath),
-                            created_at=time.time(), file_hash=f_hash,
-                            visual_hash=v_hash, 
-                            tag=tag # <--- Stores the critical tag
+                        visual_data = None
+                        is_flagged = False
+                        
+                        # --- ROBUST IMAGE DETECTION ---
+                        # 1. Ask System
+                        mime_type, _ = mimetypes.guess_type(filepath)
+                        # 2. Check Extension (Fallback)
+                        lower_name = name.lower()
+                        is_image = (mime_type and mime_type.startswith('image')) or \
+                                   lower_name.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'))
+                        
+                        # Only run AI if enabled, in TARGET, AND it is an image
+                        if privacy_scan_enabled and tag == "TARGET" and is_image:
+                            print(f"[AI CHECK] Analyzing: {name}...") 
+                            
+                            ai_result = self.ai.analyze_image(filepath)
+                            visual_data = json.dumps(ai_result)
+                            
+                            # Score > 0.40 triggers the flag
+                            score = ai_result.get('nsfw_score', 0)
+                            if score > 0.40:
+                                is_flagged = True
+                                print(f"🚩 FLAGGED: {name} (Score: {score})")
+
+                        # Create Record
+                        record = FileRecord(
+                            mission_id=self.mission_id,
+                            drive_id=drive_id,
+                            path=filepath,
+                            filename=name,
+                            extension=os.path.splitext(name)[1].lower(),
+                            size_bytes=stats.st_size,
+                            created_at=stats.st_ctime,
+                            file_hash=file_hash,
+                            visual_hash=visual_data,
+                            tag=tag,
+                            is_flagged=is_flagged
                         )
-                        session.add(rec)
-                        count += 1
-                        if count % 100 == 0: session.commit()
-                    except: continue
-            session.commit()
+                        session.add(record)
+                        session.commit()
+
+                    except Exception as e:
+                        print(f"Error scanning {filepath}: {e}")
