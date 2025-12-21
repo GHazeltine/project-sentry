@@ -1,31 +1,23 @@
 import os
 from typing import Optional
-from sqlmodel import SQLModel, Field, create_engine
+from sqlmodel import Field, SQLModel, create_engine
 
-# --- V3 DATABASE CONNECTION LOGIC ---
-# This intelligently switches between SQLite (Old) and PostgreSQL (New)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/sentry.db")
-
-# Postgres requires different arguments than SQLite
-if "sqlite" in DATABASE_URL:
-    connect_args = {"check_same_thread": False}
-else:
-    connect_args = {}
-
-# Create the Engine
-engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
-
-def init_db():
-    SQLModel.metadata.create_all(engine)
-
-# --- DATA MODELS (Preserved V2 Structure) ---
-
+# 1. Drive Model
+class Drive(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    device: str
+    mountpoint: str
+    label: Optional[str] = None
+    size: str
+    
+# 2. Mission Model
 class ScanMission(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     timestamp: float
-    root_paths: str
-    status: str = "PENDING"
+    status: str
+    root_paths: Optional[str] = None
 
+# 3. File Record Model
 class FileRecord(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     mission_id: int = Field(foreign_key="scanmission.id")
@@ -33,27 +25,20 @@ class FileRecord(SQLModel, table=True):
     path: str
     filename: str
     extension: str
-    size_bytes: int             # Preserved
+    size_bytes: int
     created_at: float
-    file_hash: Optional[str] = Field(index=True) # Preserved
-    visual_hash: Optional[str] = None            # Ready for AI features
-    tag: str                    # 'MASTER' or 'TARGET'
+    file_hash: Optional[str] = Field(index=True)
+    visual_hash: Optional[str] = None
+    tag: str
+    is_flagged: bool = Field(default=False, index=True)
 
-class FileTransaction(SQLModel, table=True):
-    """
-    The Undo Log.
-    Records every time the AI moves or renames a file.
-    """
-    id: Optional[int] = Field(default=None, primary_key=True)
-    mission_id: int = Field(foreign_key="scanmission.id")
-    timestamp: float
-    
-    # What happened?
-    action_type: str  # 'GROUP_RAW', 'PRIVACY_MOVE', 'RESTORE'
-    
-    # The Move
-    src_path: str
-    dest_path: str
-    
-    # Status
-    status: str = "COMPLETED"  # or 'REVERSED'
+# --- CONFIGURATION MATCHING DOCKER-COMPOSE.YML ---
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql://sentry_admin:sentry_secure_pass@sentry-db:5432/sentry_v3"
+)
+
+engine = create_engine(DATABASE_URL)
+
+def init_db():
+    SQLModel.metadata.create_all(engine)

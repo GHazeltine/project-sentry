@@ -1,28 +1,21 @@
 import os
 import hashlib
-import time
-from pathlib import Path
+import json
+import mimetypes
 from sqlmodel import Session
-from app.database.models import engine, ScanMission, FileRecord
-from app.core.ai_processor import AIProcessor
+from app.database.models import engine, FileRecord
+from app.core.ai_engine import AIEngine
 
 class Scanner:
     def __init__(self, mission_id: int):
         self.mission_id = mission_id
-        self.ai = AIProcessor()
+        self.ai = AIEngine()
 
-    def calculate_hash(self, filepath: str) -> str:
-        h = hashlib.md5()
-        try:
-            with open(filepath, "rb") as f:
-                while chunk := f.read(65536): h.update(chunk)
-            return h.hexdigest()
-        except: return None
-
-def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_enabled: bool = False):
-        print(f"[Scanner] Starting scan on: {root_path} (Privacy Scan Enabled: {privacy_scan_enabled})")
+    def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_enabled: bool = False):
+        print(f"[Scanner] Starting scan on: {root_path} (Privacy Scan: {privacy_scan_enabled})")
         
         if not os.path.exists(root_path):
+            print(f"[Scanner] Path not found: {root_path}")
             return
 
         with Session(engine) as session:
@@ -37,9 +30,7 @@ def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_e
                         is_flagged = False
                         
                         # --- ROBUST IMAGE DETECTION ---
-                        # 1. Ask System
                         mime_type, _ = mimetypes.guess_type(filepath)
-                        # 2. Check Extension (Fallback)
                         lower_name = name.lower()
                         is_image = (mime_type and mime_type.startswith('image')) or \
                                    lower_name.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'))
@@ -47,17 +38,14 @@ def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_e
                         # Only run AI if enabled, in TARGET, AND it is an image
                         if privacy_scan_enabled and tag == "TARGET" and is_image:
                             print(f"[AI CHECK] Analyzing: {name}...") 
-                            
                             ai_result = self.ai.analyze_image(filepath)
                             visual_data = json.dumps(ai_result)
                             
-                            # Score > 0.40 triggers the flag
                             score = ai_result.get('nsfw_score', 0)
                             if score > 0.40:
                                 is_flagged = True
                                 print(f"🚩 FLAGGED: {name} (Score: {score})")
 
-                        # Create Record
                         record = FileRecord(
                             mission_id=self.mission_id,
                             drive_id=drive_id,
@@ -76,3 +64,13 @@ def scan_directory(self, root_path: str, tag: str, drive_id: str, privacy_scan_e
 
                     except Exception as e:
                         print(f"Error scanning {filepath}: {e}")
+
+    def calculate_md5(self, filepath):
+        hasher = hashlib.md5()
+        try:
+            with open(filepath, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except:
+            return None
