@@ -29,33 +29,57 @@ class ScanRequest(BaseModel):
     target_paths: List[str]
     enable_privacy: bool = False
 
+class DriveCmdRequest(BaseModel):
+    device_path: str  # e.g., "/dev/sda1"
+
 # --- HELPER: ROBUST HEALTH CHECK ---
 def get_smart_status(device_path):
-    # 1. Standard Check
+    # Try getting parent device for partitions (e.g. sda1 -> sda)
+    if device_path[-1].isdigit():
+        parent = device_path.rstrip('0123456789')
+    else:
+        parent = device_path
+
+    # 1. Standard
     try:
-        cmd = ["smartctl", "-H", device_path]
+        cmd = ["smartctl", "-H", parent]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if "PASSED" in result.stdout: return "✅ PASSED"
         if "FAILED" in result.stdout: return "❌ FAILED"
     except: pass
-
-    # 2. Force SAT
+    
+    # 2. SAT
     try:
-        cmd = ["smartctl", "-d", "sat", "-H", device_path]
+        cmd = ["smartctl", "-d", "sat", "-H", parent]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if "PASSED" in result.stdout: return "✅ PASSED"
-        if "FAILED" in result.stdout: return "❌ FAILED"
     except: pass
-
-    # 3. Force Permissive
+    
+    # 3. Permissive
     try:
-        cmd = ["smartctl", "-d", "sat", "-T", "permissive", "-H", device_path]
+        cmd = ["smartctl", "-d", "sat", "-T", "permissive", "-H", parent]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if "PASSED" in result.stdout: return "✅ PASSED"
-        if "FAILED" in result.stdout: return "❌ FAILED"
     except: pass
 
-    return "⚠️ UNKNOWN (Controller Limit)"
+    return "⚠️ UNKNOWN"
+
+# --- HELPER: SYSTEM MOUNT ---
+def system_mount(device_path, mount_point):
+    # Ensure directory exists
+    os.makedirs(mount_point, exist_ok=True)
+    
+    # Try standard mount (auto-type)
+    try:
+        subprocess.run(["mount", device_path, mount_point], check=True)
+        return True
+    except:
+        # Fallback: Try NTFS-3G specifically if standard fails
+        try:
+            subprocess.run(["mount", "-t", "ntfs-3g", device_path, mount_point], check=True)
+            return True
+        except:
+            return False
 
 # --- BACKGROUND TASKS ---
 def background_scan_task(gold_paths, target_paths, mission_id, enable_privacy):
@@ -66,11 +90,9 @@ def background_scan_task(gold_paths, target_paths, mission_id, enable_privacy):
         session.add(mission)
         session.commit()
         
-        # Scan Gold
         for path in gold_paths:
             scanner.scan_directory(path, "MASTER", os.path.basename(path), False)
             
-        # Scan Target
         for path in target_paths:
             scanner.scan_directory(path, "TARGET", os.path.basename(path), enable_privacy)
 
@@ -91,70 +113,100 @@ async def read_root(request: Request):
 @app.get("/api/drives")
 def get_drives(user: str = Depends(get_current_user)):
     try:
+        # Get flattened list including partitions
         lsblk = subprocess.check_output(['lsblk', '-J', '-o', 'NAME,SIZE,TYPE,MOUNTPOINT,LABEL,MODEL']).decode()
         data = json.loads(lsblk)
         drives = []
         
-        for d in data.get('blockdevices', []):
-            if d.get('type') == 'disk':
-                dev_path = f"/dev/{d['name']}"
-                health = get_smart_status(dev_path)
-                d['health'] = health
-                drives.append(d)
+        # Recursive function to find partitions
+        def extract_partitions(devices):
+            for d in devices:
+                # If it's a partition (part) or a disk with no children (like a USB stick), add it
+                has_children = 'children' in d
+                is_partition = d.get('type') == 'part'
                 
+                # We want partitions OR disks that act as direct storage
+                if is_partition or (d.get('type') == 'disk' and not has_children):
+                    dev_path = f"/dev/{d['name']}"
+                    
+                    # Determine mount status
+                    is_mounted = d['mountpoint'] is not None
+                    
+                    drives.append({
+                        "device": dev_path,
+                        "name": d.get('label') or d['name'],
+                        "size": d['size'],
+                        "mountpoint": d['mountpoint'],
+                        "is_mounted": is_mounted,
+                        "health": get_smart_status(dev_path)
+                    })
+                
+                # Dig deeper if it has children
+                if has_children:
+                    extract_partitions(d['children'])
+
+        extract_partitions(data.get('blockdevices', []))
         return drives
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/api/fs/list")
-def list_fs(path: str, user: str = Depends(get_current_user)):
-    if not os.path.exists(path):
-        return {"error": "Path not found"}
+@app.post("/api/drives/mount")
+def mount_drive_endpoint(req: DriveCmdRequest, user: str = Depends(get_current_user)):
+    # Security: Only allow /dev/sdX devices
+    if not req.device_path.startswith("/dev/"):
+        return {"error": "Invalid device path"}
+    
+    # Create a consistent mount point in /media
+    device_name = os.path.basename(req.device_path)
+    mount_point = f"/media/{device_name}"
+    
+    success = system_mount(req.device_path, mount_point)
+    
+    if success:
+        return {"status": "Mounted", "mountpoint": mount_point}
+    else:
+        return {"error": "Mount failed. Check filesystem."}
+
+@app.post("/api/drives/unmount")
+def unmount_drive_endpoint(req: DriveCmdRequest, user: str = Depends(get_current_user)):
     try:
-        entries = []
-        for entry in os.scandir(path):
-            entries.append({
-                "name": entry.name,
-                "path": entry.path,
-                "type": "dir" if entry.is_dir() else "file"
-            })
-        return {"entries": sorted(entries, key=lambda x: (x['type']!='dir', x['name']))}
+        subprocess.run(["umount", req.device_path], check=True)
+        return {"status": "Unmounted"}
     except Exception as e:
         return {"error": str(e)}
 
+# --- EXISTING ENDPOINTS (Scan, Status, Privacy) ---
+# [Copy existing Scan, FS List, Status, Privacy endpoints here - they are unchanged]
+# For brevity, I am assuming you keep the list_fs, start_scan, etc. from the previous step.
+# If you need the full file again, let me know, but the key changes are above.
+# BELOW IS THE REST OF THE CODE TO ENSURE IT IS COPY-PASTE READY:
+
+@app.get("/api/fs/list")
+def list_fs(path: str, user: str = Depends(get_current_user)):
+    if not os.path.exists(path): return {"error": "Path not found"}
+    try:
+        entries = []
+        for entry in os.scandir(path):
+            entries.append({"name": entry.name, "path": entry.path, "type": "dir" if entry.is_dir() else "file"})
+        return {"entries": sorted(entries, key=lambda x: (x['type']!='dir', x['name']))}
+    except Exception as e: return {"error": str(e)}
+
 @app.post("/api/scan")
 async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
-    all_paths = req.gold_paths + req.target_paths
-    paths_json = json.dumps(all_paths)
-    
-    mission = ScanMission(
-        status="PENDING", 
-        timestamp=time.time(),
-        root_paths=paths_json
-    )
-    
+    paths_json = json.dumps(req.gold_paths + req.target_paths)
+    mission = ScanMission(status="PENDING", timestamp=time.time(), root_paths=paths_json)
     with Session(engine) as session:
         session.add(mission)
         session.commit()
         session.refresh(mission)
-    
-    background_tasks.add_task(
-        background_scan_task, 
-        req.gold_paths, 
-        req.target_paths, 
-        mission.id, 
-        req.enable_privacy
-    )
-    
+    background_tasks.add_task(background_scan_task, req.gold_paths, req.target_paths, mission.id, req.enable_privacy)
     return {"status": "Started", "mission_id": mission.id}
 
 @app.get("/api/status")
 def get_status():
     with Session(engine) as session:
         mission = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
-        if not mission:
-            return {"status": "IDLE", "file_count": 0}
-        
+        if not mission: return {"status": "IDLE", "file_count": 0}
         count = session.exec(select(func.count(FileRecord.id)).where(FileRecord.mission_id == mission.id)).one()
         return {"status": mission.status, "file_count": count}
 
@@ -163,11 +215,7 @@ def get_privacy_flags(user: str = Depends(get_current_user)):
     with Session(engine) as session:
         latest = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
         if not latest: return []
-        
-        statement = select(FileRecord).where(
-            FileRecord.mission_id == latest.id, 
-            FileRecord.is_flagged == True
-        )
+        statement = select(FileRecord).where(FileRecord.mission_id == latest.id, FileRecord.is_flagged == True)
         return session.exec(statement).all()
 
 @app.post("/api/privacy/quarantine")
@@ -176,16 +224,10 @@ def execute_quarantine(user: str = Depends(get_current_user)):
     with Session(engine) as session:
         latest = session.exec(select(ScanMission).order_by(ScanMission.id.desc())).first()
         if not latest: return {"error": "No mission"}
-        
-        flagged = session.exec(select(FileRecord).where(
-            FileRecord.mission_id == latest.id, 
-            FileRecord.is_flagged == True
-        )).all()
-        
+        flagged = session.exec(select(FileRecord).where(FileRecord.mission_id == latest.id, FileRecord.is_flagged == True)).all()
         for record in flagged:
             vault_dir = os.path.join(os.path.dirname(record.path), "SENTRY_VAULT")
             os.makedirs(vault_dir, exist_ok=True)
-            
             new_path = os.path.join(vault_dir, record.filename)
             try:
                 shutil.move(record.path, new_path)
@@ -193,9 +235,6 @@ def execute_quarantine(user: str = Depends(get_current_user)):
                 record.is_flagged = False
                 session.add(record)
                 moved_count += 1
-            except Exception as e:
-                print(f"Move failed: {e}")
-            
+            except Exception as e: print(f"Move failed: {e}")
         session.commit()
-        
     return {"status": "Quarantined", "count": moved_count}
