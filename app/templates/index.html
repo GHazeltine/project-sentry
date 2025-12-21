@@ -94,6 +94,12 @@
 
       <div class="card" style="flex-grow: 0;">
         <h3>⚡ 5. EXECUTION</h3>
+        
+        <label style="display:flex; align-items:center; gap:10px; margin-bottom:15px; cursor:pointer; background:#0b0f14; padding:8px; border:1px solid #30363d;">
+            <input type="checkbox" id="privacy-toggle" checked>
+            <span style="color:var(--neon); font-weight:bold;">👁️ Enable AI Privacy Scan</span>
+        </label>
+
         <div id="statusBox" style="text-align:center; margin-bottom:10px; font-weight:bold;">IDLE</div>
         <button class="btn-neon" onclick="startScan()">🔍 START SCAN</button>
         <button onclick="analyze()" id="btnAnalyze" disabled>💀 ANALYZE</button>
@@ -147,7 +153,7 @@
     } catch (e) { console.error("Drive detect fail", e); }
   }
 
-  // --- NEW: MOUNT USB ---
+  // --- ACTIONS: MOUNT ---
   async function mountUsb() {
     const dev = document.getElementById('mountDev').value;
     try {
@@ -155,7 +161,7 @@
         if(res.error) alert("Error: " + res.error);
         else {
             alert("Mounted to: " + res.mountpoint);
-            loadDrives(); // Refresh dropdown
+            loadDrives(); 
         }
     } catch(e) { alert("Network Error"); }
   }
@@ -251,7 +257,7 @@
     selectedPath = path;
   }
 
-  // --- ACTIONS ---
+  // --- LIST MANAGEMENT ---
   function addSelection(type) {
     if (!selectedPath) return alert("Select a folder or [ENTIRE DRIVE] first.");
     (type === 'gold' ? goldPaths : targetPaths).add(selectedPath);
@@ -283,10 +289,20 @@
     if(currentRoot.includes('mnt')) refreshTree();
   }
 
+  // --- EXECUTION ---
   async function startScan() {
     if (goldPaths.size === 0 || targetPaths.size === 0) return alert("Select GOLD and TARGET.");
+    
+    // CAPTURE TOGGLE STATE HERE
+    const privacyEnabled = document.getElementById('privacy-toggle').checked;
+    
     document.getElementById('statusBox').innerText = "STARTING...";
-    await api('/api/scan', 'POST', { gold_paths: [...goldPaths], target_paths: [...targetPaths] });
+    
+    await api('/api/scan', 'POST', { 
+        gold_paths: [...goldPaths], 
+        target_paths: [...targetPaths],
+        enable_privacy: privacyEnabled 
+    });
     
     const t = setInterval(async () => {
       const s = await api('/api/status');
@@ -311,7 +327,6 @@
     
     alert(`Cleanup Complete!\nFiles Deleted: ${res.files_deleted}\nGhost Folders Removed: ${res.ghost_folders_removed}`);
     
-    // Enable Report Button
     const btnReport = document.getElementById('btnReport');
     btnReport.href = res.report_url;
     btnReport.style.display = 'block';
