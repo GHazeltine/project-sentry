@@ -2,180 +2,263 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sentry Command | V2 Stable</title>
+    <title>SENTRY COMMAND | AI ACTIVE</title>
     <style>
-        body { background: #111; color: #eee; font-family: monospace; padding: 20px; max-width: 800px; margin: 0 auto; }
-        h2 { border-bottom: 1px solid #444; color: #4caf50; }
-        .box { background: #222; padding: 15px; margin-bottom: 20px; border: 1px solid #333; }
+        :root {
+            --bg-dark: #0f1115;
+            --panel-bg: #161b22;
+            --border: #30363d;
+            --text-main: #c9d1d9;
+            --gold: #f1e05a;
+            --green: #2ea043;
+            --red: #da3633;
+            --blue: #58a6ff;
+        }
+        body { background: var(--bg-dark); color: var(--text-main); font-family: 'Segoe UI', monospace; margin: 0; padding: 20px; height: 100vh; overflow: hidden; }
         
-        /* HARDWARE STRIP */
-        .drive-row { background: #000; padding: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-        .btn { padding: 5px 15px; cursor: pointer; border: none; font-weight: bold; }
-        .btn-blue { background: #2196f3; color: white; }
-        .btn-green { background: #4caf50; color: white; }
-        .btn-red { background: #f44336; color: white; }
+        /* LAYOUT GRID */
+        .grid-container {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 20px;
+            height: 95vh;
+        }
+        
+        /* PANELS */
+        .panel { background: var(--panel-bg); border: 1px solid var(--border); border-radius: 6px; padding: 15px; display: flex; flex-direction: column; }
+        .panel-header { font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        
+        .scroll-area { overflow-y: auto; flex-grow: 1; background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 5px; }
 
-        /* BROWSER */
-        .browser { height: 200px; overflow-y: scroll; background: #000; border: 1px solid #444; padding: 5px; }
-        .item { padding: 5px; cursor: pointer; border-bottom: 1px solid #222; }
-        .item:hover { background: #333; }
-        .selected { background: #004d40; color: #fff; }
+        /* HARDWARE / MOUNT BUTTONS */
+        .drive-item { 
+            background: #21262d; padding: 8px; margin-bottom: 5px; border-radius: 4px; border: 1px solid #30363d; 
+            display: flex; justify-content: space-between; align-items: center; font-size: 0.85em;
+        }
+        .btn-mount { padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.8em; }
+        .mount-go { background: var(--blue); color: #fff; }
+        .mount-done { background: var(--green); color: #fff; }
+
+        /* BROWSER ITEMS */
+        .file-item { padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .file-item:hover { background: #21262d; }
+        .selected { background: #1f6feb !important; color: white; }
         
-        .status-bar { padding: 10px; background: #333; text-align: center; font-weight: bold; margin-bottom: 20px; }
+        /* LISTS (Gold/Target) */
+        .list-item { padding: 5px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; font-size: 0.9em; }
+        
+        /* BUTTONS */
+        .btn { width: 100%; padding: 10px; border: none; font-weight: bold; cursor: pointer; color: white; margin-top: 5px; border-radius: 4px; }
+        .btn-gold { background: var(--gold); color: #000; }
+        .btn-target { background: var(--green); }
+        .btn-exec { background: var(--red); font-size: 1.1em; padding: 15px; margin-top: 20px; }
+
+        .status-bar { margin-top: 10px; text-align: center; color: #8b949e; font-size: 0.9em; }
     </style>
 </head>
 <body>
 
-    <div class="status-bar" id="status-display">SYSTEM READY</div>
+<div class="grid-container">
+    
+    <div style="display:flex; flex-direction:column; gap:20px;">
+        
+        <div class="panel" style="flex-grow:0">
+            <div class="panel-header">🔌 0. HARDWARE MOUNT</div>
+            <div id="drive-list">Loading USBs...</div>
+            <button onclick="refreshDrives()" style="background:#21262d; border:1px solid #30363d; color:#8b949e; width:100%; margin-top:5px; padding:5px; cursor:pointer">↻ Refresh</button>
+        </div>
 
-    <h2>1. HARDWARE CONTROL</h2>
-    <div class="box" id="drive-list">
-        <div>Scanning Hardware...</div>
+        <div class="panel" style="flex-grow:0">
+            <div class="panel-header">⚡ 1. CONNECT NETWORK</div>
+            <input type="text" placeholder="//SERVER/Share" style="width:100%; margin-bottom:5px; background:#0d1117; border:1px solid #30363d; color:white; padding:5px;">
+            <button class="btn" style="background:#21262d">Mount Network Drive</button>
+        </div>
+
+        <div class="panel" style="flex-grow:1">
+            <div class="panel-header" style="color:var(--gold)">🛡️ 3. GOLD (PROTECTED)</div>
+            <div class="scroll-area" id="gold-list-area"></div>
+            <button class="btn" style="background:#21262d" onclick="clearList('gold')">Clear List</button>
+        </div>
     </div>
 
-    <h2>2. SELECT GOLD SOURCE (MASTER)</h2>
-    <div class="box">
-        <div id="gold-path-display" style="color:#aaa; margin-bottom:5px">Current: None</div>
-        <div class="browser" id="gold-browser"></div>
+    <div class="panel">
+        <div class="panel-header">
+            📁 2. SOURCE SELECTION
+            <span id="current-path" style="font-weight:normal; font-size:0.8em; margin-left:auto; color:#8b949e">/</span>
+        </div>
+        
+        <div class="file-item" onclick="goUp()" style="border-bottom:1px solid #30363d; margin-bottom:5px">⬆️ .. (Go Up)</div>
+        
+        <div class="scroll-area" id="file-browser"></div>
+
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button class="btn btn-gold" onclick="addSelection('gold')">🛡️ ADD TO GOLD</button>
+            <button class="btn btn-target" onclick="addSelection('target')">🎯 ADD TO TARGET</button>
+        </div>
     </div>
 
-    <h2>3. SELECT TARGET (CLIENT)</h2>
-    <div class="box">
-        <div id="target-path-display" style="color:#aaa; margin-bottom:5px">Current: None</div>
-        <div class="browser" id="target-browser"></div>
-        <button class="btn btn-blue" style="width:100%; margin-top:10px" onclick="selectCurrentTargetRoot()">SELECT CURRENT FOLDER AS ROOT</button>
+    <div class="panel">
+        <div class="panel-header" style="color:var(--green)">🎯 4. TARGETS</div>
+        <div class="scroll-area" id="target-list-area"></div>
+        <button class="btn" style="background:#21262d" onclick="clearList('target')">Clear List</button>
+
+        <div style="margin-top:20px; border-top:1px solid #30363d; padding-top:20px;">
+            <div class="panel-header">⚡ 5. EXECUTION</div>
+            
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; background:#21262d; padding:10px; border-radius:4px;">
+                <input type="checkbox" id="privacy-toggle" checked>
+                <span>👁️ Enable AI Privacy Scan?</span>
+            </label>
+
+            <button class="btn btn-exec" onclick="startMission()">🚀 START SCAN</button>
+            <div class="status-bar" id="status-text">SYSTEM IDLE</div>
+        </div>
     </div>
 
-    <h2>4. EXECUTE</h2>
-    <div class="box">
-        <label><input type="checkbox" id="privacy-check"> Enable Privacy AI Scan</label>
-        <br><br>
-        <button class="btn btn-red" style="width:100%; padding: 15px; font-size:1.2em" onclick="launchMission()">INITIATE SCAN</button>
-    </div>
+</div>
 
-    <script>
-        let currentGoldPath = '/host_fs/home/greg';
-        let currentTargetPath = '/media';
-        let selectedGold = null;
-        let selectedTarget = null;
+<script>
+    // STATE
+    let currentPath = '/media'; // Default to media so they see drives immediately
+    let selectedFile = null;
+    let goldPaths = [];
+    let targetPaths = [];
 
-        // --- HARDWARE ---
-        async function loadDrives() {
+    // --- 1. HARDWARE ---
+    async function refreshDrives() {
+        const div = document.getElementById('drive-list');
+        div.innerHTML = 'Scanning...';
+        try {
             const res = await fetch('/api/drives');
             const drives = await res.json();
-            const container = document.getElementById('drive-list');
-            container.innerHTML = '';
+            div.innerHTML = '';
             
-            if(drives.length === 0) container.innerHTML = 'No USB drives found.';
-
             drives.forEach(d => {
-                // Only show real disks/partitions
+                // Only show real disks
                 if(d.device.startsWith('/dev/sd')) {
-                    const btn = d.is_mounted 
-                        ? `<button class="btn btn-green" onclick="mountDrive('${d.device}', false)">MOUNTED (CLICK TO UNMOUNT)</button>`
-                        : `<button class="btn btn-blue" onclick="mountDrive('${d.device}', true)">MOUNT DRIVE</button>`;
+                    const btnClass = d.is_mounted ? 'mount-done' : 'mount-go';
+                    const btnText = d.is_mounted ? 'UNMOUNT' : 'MOUNT';
+                    const action = d.is_mounted ? 'false' : 'true';
                     
-                    container.innerHTML += `
-                        <div class="drive-row">
-                            <span><strong>${d.device}</strong> (${d.size}) - ${d.health}</span>
-                            ${btn}
+                    div.innerHTML += `
+                        <div class="drive-item">
+                            <div>
+                                <div>${d.device} (${d.size})</div>
+                                <div style="color:${d.health.includes('PASSED')?'var(--green)':'var(--red)'}">${d.health}</div>
+                            </div>
+                            <button class="btn-mount ${btnClass}" onclick="toggleMount('${d.device}', ${action})">${btnText}</button>
                         </div>
                     `;
                 }
             });
-        }
+            if(div.innerHTML === '') div.innerHTML = '<div style="color:#888; padding:10px">No USB Drives Found</div>';
+        } catch(e) { div.innerHTML = 'Error loading drives'; }
+    }
 
-        async function mountDrive(dev, doMount) {
-            const ep = doMount ? '/api/drives/mount' : '/api/drives/unmount';
-            await fetch(ep, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({device_path: dev})
-            });
-            setTimeout(() => { loadDrives(); loadBrowser('target', '/media'); }, 1000);
-        }
+    async function toggleMount(dev, doMount) {
+        const ep = doMount ? '/api/drives/mount' : '/api/drives/unmount';
+        await fetch(ep, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({device_path: dev})
+        });
+        setTimeout(() => { refreshDrives(); loadBrowser('/media'); }, 1000);
+    }
 
-        // --- BROWSERS ---
-        async function loadBrowser(type, path) {
-            const container = document.getElementById(type + '-browser');
-            container.innerHTML = 'Loading...';
-            try {
-                const res = await fetch(`/api/fs/list?path=${encodeURIComponent(path)}`);
-                const data = await res.json();
-                
-                if(data.error) { container.innerHTML = 'Error: ' + data.error; return; }
-                container.innerHTML = '';
-
-                // Up Dir
-                if(path !== '/' && path !== '/host_fs') {
-                    const parent = path.substring(0, path.lastIndexOf('/')) || '/';
-                    container.innerHTML += `<div class="item" onclick="loadBrowser('${type}', '${parent}')">.. (UP)</div>`;
-                }
-
-                // Update Globals
-                if(type === 'gold') currentGoldPath = path;
-                if(type === 'target') currentTargetPath = path;
-
-                data.entries.forEach(e => {
-                    const style = (type==='gold' && selectedGold===e.path) || (type==='target' && selectedTarget===e.path) ? 'selected' : '';
-                    const action = e.type === 'dir' 
-                        ? `onclick="loadBrowser('${type}', '${e.path}')"` 
-                        : `onclick="selectFile('${type}', '${e.path}')"`;
-                    
-                    // Add SELECT button for Gold folders
-                    let extra = '';
-                    if(type === 'gold' && e.type === 'dir') {
-                        extra = `<button class="btn btn-blue" style="float:right; font-size:0.7em" onclick="event.stopPropagation(); selectPath('gold', '${e.path}')">SELECT</button>`;
-                    }
-
-                    container.innerHTML += `<div class="item ${style}" ${action}>${e.type==='dir'?'📁':'📄'} ${e.name} ${extra}</div>`;
-                });
-            } catch(e) { container.innerHTML = 'Access Denied'; }
-        }
-
-        function selectPath(type, path) {
-            if(type === 'gold') {
-                selectedGold = path;
-                document.getElementById('gold-path-display').innerText = "SELECTED: " + path;
-            }
-        }
+    // --- 2. BROWSER ---
+    async function loadBrowser(path) {
+        currentPath = path;
+        document.getElementById('current-path').innerText = path;
+        const container = document.getElementById('file-browser');
+        container.innerHTML = 'Loading...';
         
-        function selectCurrentTargetRoot() {
-            selectedTarget = currentTargetPath; // Selects the folder you are currently VIEWING
-            document.getElementById('target-path-display').innerText = "SELECTED ROOT: " + currentTargetPath;
-        }
-
-        // --- LAUNCH ---
-        async function launchMission() {
-            if(!selectedGold || !selectedTarget) { alert("Select both paths!"); return; }
-            
-            const res = await fetch('/api/scan', {
-                method:'POST', 
-                headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({
-                    gold_paths: [selectedGold],
-                    target_paths: [selectedTarget],
-                    enable_privacy: document.getElementById('privacy-check').checked
-                })
-            });
+        try {
+            const res = await fetch(`/api/fs/list?path=${encodeURIComponent(path)}`);
             const data = await res.json();
-            document.getElementById('status-display').innerText = "SCANNING... ID: " + data.mission_id;
-        }
+            container.innerHTML = '';
+            
+            data.entries.forEach(e => {
+                const icon = e.type === 'dir' ? '📁' : '📄';
+                const el = document.createElement('div');
+                el.className = 'file-item';
+                el.innerHTML = `<span>${icon}</span> ${e.name}`;
+                
+                el.onclick = () => {
+                    if(e.type === 'dir') loadBrowser(e.path);
+                    else {
+                        selectedFile = e.path; // Select file
+                        // Visual selection logic could go here
+                    }
+                };
+                
+                // RIGHT CLICK to select folder as target/gold without entering
+                el.oncontextmenu = (ev) => {
+                    ev.preventDefault();
+                    selectedFile = e.path;
+                    alert("Selected: " + e.path);
+                };
 
-        // INIT
-        loadDrives();
-        loadBrowser('gold', '/host_fs/home/greg');
-        loadBrowser('target', '/media');
+                container.appendChild(el);
+            });
+        } catch(e) { container.innerHTML = 'Access Denied'; }
+    }
+
+    function goUp() {
+        const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+        loadBrowser(parent);
+    }
+
+    // --- 3. LIST MANAGEMENT ---
+    function addSelection(type) {
+        // If nothing clicked, use CURRENT FOLDER
+        const pathToAdd = selectedFile || currentPath;
         
-        // Poll Status
-        setInterval(async () => {
-            const res = await fetch('/api/status');
-            const d = await res.json();
-            if(d.status !== 'IDLE') {
-                document.getElementById('status-display').innerText = `STATUS: ${d.status} | FILES: ${d.file_count}`;
-            }
-        }, 2000);
+        if(type === 'gold') {
+            if(!goldPaths.includes(pathToAdd)) goldPaths.push(pathToAdd);
+            renderList('gold-list-area', goldPaths);
+        } else {
+            if(!targetPaths.includes(pathToAdd)) targetPaths.push(pathToAdd);
+            renderList('target-list-area', targetPaths);
+        }
+        selectedFile = null; // Reset
+    }
 
-    </script>
+    function renderList(id, arr) {
+        const div = document.getElementById(id);
+        div.innerHTML = '';
+        arr.forEach(p => {
+            div.innerHTML += `<div class="list-item"><span>${p.split('/').pop()}</span> <span style="color:red; cursor:pointer" onclick="removeItem('${id}', '${p}')">X</span></div>`;
+        });
+    }
+
+    // --- 4. EXECUTION ---
+    async function startMission() {
+        if(goldPaths.length === 0 || targetPaths.length === 0) { alert("Lists cannot be empty!"); return; }
+        
+        const res = await fetch('/api/scan', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                gold_paths: goldPaths,
+                target_paths: targetPaths,
+                enable_privacy: document.getElementById('privacy-toggle').checked
+            })
+        });
+        const data = await res.json();
+        document.getElementById('status-text').innerText = "MISSION RUNNING: " + data.mission_id;
+    }
+
+    // INIT
+    refreshDrives();
+    loadBrowser('/media'); // Start in media so they see USBs
+    
+    // Status Poll
+    setInterval(async () => {
+        const res = await fetch('/api/status');
+        const d = await res.json();
+        if(d.status !== 'IDLE') document.getElementById('status-text').innerText = `STATUS: ${d.status} | FILES: ${d.file_count}`;
+    }, 2000);
+
+</script>
 </body>
 </html>
