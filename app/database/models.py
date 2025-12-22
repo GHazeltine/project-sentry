@@ -32,11 +32,25 @@ class FileRecord(SQLModel, table=True):
     tag: str
     is_flagged: bool = Field(default=False, index=True)
 
-# --- CONFIGURATION MATCHING DOCKER-COMPOSE.YML ---
+# 4. Transaction Log (Required for Undo System) <--- THIS WAS MISSING
+class FileTransaction(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    mission_id: int = Field(foreign_key="scanmission.id")
+    timestamp: float
+    action_type: str
+    src_path: str
+    dest_path: str
+
+# --- CONFIGURATION ---
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
     "postgresql://sentry_admin:sentry_secure_pass@sentry-db:5432/sentry_v3"
 )
+
+# Logic to handle local SQLite fallback if needed (useful for dev)
+if "sqlite" in DATABASE_URL or not os.getenv("DATABASE_URL"):
+    sqlite_file_name = "sentry.db"
+    DATABASE_URL = f"sqlite:///{sqlite_file_name}"
 
 engine = create_engine(DATABASE_URL)
 
