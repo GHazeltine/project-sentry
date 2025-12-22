@@ -1,0 +1,22 @@
+# --- CORE FRAMEWORK ---
+fastapi
+uvicorn
+python-multipart
+jinja2
+requests
+sqlmodel
+psycopg2-binary
+
+# --- IMAGE PROCESSING ---
+pillow
+numpy
+piexif
+opencv-python-headless  # <--- CRITICAL ADDITION FOR DOCKER
+
+# --- AI & ANALYTICS ---
+nudenet                 # The CPU Fallback Brain
+onnxruntime             # The engine for NudeNet
+
+# --- REPORTING ---
+reportlab==4.0.7        # For generating Client PDF Reports
+python-dateutil         # Robust date parsing

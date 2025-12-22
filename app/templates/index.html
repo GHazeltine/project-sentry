@@ -95,13 +95,21 @@
       <div class="card" style="flex-grow: 0;">
         <h3>⚡ 5. EXECUTION</h3>
         
-        <label style="display:flex; align-items:center; gap:10px; margin-bottom:15px; cursor:pointer; background:#0b0f14; padding:8px; border:1px solid #30363d;">
+        <label style="display:flex; align-items:center; gap:10px; margin-bottom:5px; cursor:pointer; background:#0b0f14; padding:8px; border:1px solid #30363d;">
             <input type="checkbox" id="privacy-toggle" checked>
             <span style="color:var(--neon); font-weight:bold;">👁️ Enable AI Privacy Scan</span>
+        </label>
+        
+        <label style="display:flex; align-items:center; gap:10px; margin-bottom:15px; cursor:pointer; background:#0b0f14; padding:8px; border:1px solid #30363d;">
+            <input type="checkbox" id="grouping-toggle">
+            <span style="color:#1f6feb; font-weight:bold;">🧩 Enable Smart Visual Grouping</span>
         </label>
 
         <div id="statusBox" style="text-align:center; margin-bottom:10px; font-weight:bold;">IDLE</div>
         <button class="btn-neon" onclick="startScan()">🔍 START SCAN</button>
+
+        <button onclick="undoGrouping()" id="btnUndo" style="display:none; background:#ff9900; color:black; margin-bottom:15px;">↩️ UNDO GROUPING</button>
+
         <button onclick="analyze()" id="btnAnalyze" disabled>💀 ANALYZE</button>
         <button class="btn-danger" onclick="clean()" id="btnClean" disabled>⚠️ EXECUTE REAPER</button>
         <a id="btnReport" class="btn-report" target="_blank" style="text-align:center; text-decoration:none; padding:10px; font-weight:bold; margin-top:5px;">📄 DOWNLOAD REPORT</a>
@@ -295,20 +303,39 @@
     
     // CAPTURE TOGGLE STATE HERE
     const privacyEnabled = document.getElementById('privacy-toggle').checked;
+    // INSERTED: Capture Grouping Toggle
+    const groupingEnabled = document.getElementById('grouping-toggle').checked;
     
     document.getElementById('statusBox').innerText = "STARTING...";
     
+    // INSERTED: Send enable_grouping flag
     await api('/api/scan', 'POST', { 
         gold_paths: [...goldPaths], 
         target_paths: [...targetPaths],
-        enable_privacy: privacyEnabled 
+        enable_privacy: privacyEnabled,
+        enable_grouping: groupingEnabled 
     });
     
     const t = setInterval(async () => {
       const s = await api('/api/status');
       document.getElementById('statusBox').innerText = `${s.status} | Files: ${s.file_count}`;
-      if (s.status === 'COMPLETE') { clearInterval(t); document.getElementById('btnAnalyze').disabled = false; }
+      if (s.status === 'COMPLETE') { 
+          clearInterval(t); 
+          document.getElementById('btnAnalyze').disabled = false;
+          // INSERTED: Show Undo button if grouping was enabled
+          if(groupingEnabled) {
+              document.getElementById('btnUndo').style.display = 'block';
+          }
+      }
     }, 1000);
+  }
+
+  // INSERTED: Undo Function
+  async function undoGrouping() {
+      if(!confirm("Reverse the file grouping? This puts files back in their original folders.")) return;
+      const res = await api('/api/undo', 'POST', {});
+      alert(`Restored ${res.files_restored} files.`);
+      document.getElementById('btnUndo').style.display = 'none';
   }
 
   async function analyze() {

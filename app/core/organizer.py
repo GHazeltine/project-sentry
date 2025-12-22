@@ -3,65 +3,110 @@ import shutil
 import time
 import logging
 from pathlib import Path
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.database.models import engine, FileTransaction, FileRecord
 
 class Organizer:
-    """
-    The Librarian.
-    Handles 'Smart Stacking' (RAW+JPG) and 'Privacy Vault' (NSFW) moves.
-    """
-    
     def __init__(self, mission_id: int):
         self.mission_id = mission_id
 
-    def smart_stack(self, file_record: FileRecord, siblings: list[FileRecord]):
-        """
-        Groups a file and its siblings into a folder.
-        Example: IMG_001.JPG + IMG_001.ARW -> /IMG_001_Grouped/
-        """
-        # 1. Determine the "Leader" (usually the JPG or the last modified)
-        # For simplicity, we name the folder after the base filename
-        base_name = Path(file_record.filename).stem
-        parent_dir = Path(file_record.path).parent
+    def group_by_similarity(self):
+        """Groups visually similar images into folders named after the NEWEST file."""
+        grouped_count = 0
         
-        # 2. Create the Group Folder
-        group_folder = parent_dir / f"{base_name}_Grouped"
-        if not group_folder.exists():
-            group_folder.mkdir()
-            logging.info(f"📁 Created Stack: {group_folder}")
-
-        # 3. Move all siblings
-        for sibling in siblings:
-            self._move_file(sibling, group_folder, "GROUP_RAW")
-
-    def privacy_quarantine(self, file_record: FileRecord, vault_root: str):
-        """
-        Moves a sensitive file to the Privacy Vault.
-        """
-        vault_path = Path(vault_root)
-        if not vault_path.exists():
-            vault_path.mkdir(parents=True)
+        with Session(engine) as session:
+            # Get only images that actually have a visual hash
+            images = session.exec(select(FileRecord).where(FileRecord.mission_id == self.mission_id, FileRecord.visual_hash != None)).all()
             
-        self._move_file(file_record, vault_path, "PRIVACY_MOVE")
+            processed_ids = set()
+
+            for i in range(len(images)):
+                if images[i].id in processed_ids: continue
+                
+                group = [images[i]]
+                base_hash = int(images[i].visual_hash, 16)
+                
+                # Find friends
+                for j in range(i + 1, len(images)):
+                    if images[j].id in processed_ids: continue
+                    
+                    compare_hash = int(images[j].visual_hash, 16)
+                    distance = bin(base_hash ^ compare_hash).count('1')
+                    
+                    # Distance < 10 allows for resizing, cropping, and light edits
+                    if distance <= 10:
+                        group.append(images[j])
+                
+                if len(group) > 1:
+                    # Mark all as processed
+                    for img in group: processed_ids.add(img.id)
+                    
+                    # INTELLIGENT NAMING: Sort by Creation Date (Newest First)
+                    # We want the "Latest Edit" to dictate the folder name
+                    group.sort(key=lambda x: x.created_at, reverse=True)
+                    leader = group[0]
+                    
+                    self._create_visual_stack(group, leader)
+                    grouped_count += 1
+                    
+        return grouped_count
+
+    def undo_grouping(self):
+        """Reverses all moves for this mission."""
+        restored = 0
+        with Session(engine) as session:
+            # Find all moves for this mission
+            txns = session.exec(select(FileTransaction).where(FileTransaction.mission_id == self.mission_id)).all()
+            
+            for txn in txns:
+                if os.path.exists(txn.dest_path):
+                    try:
+                        # Move back to Source
+                        # Create dir if it vanished (e.g. ghost folder cleanup)
+                        os.makedirs(os.path.dirname(txn.src_path), exist_ok=True)
+                        shutil.move(txn.dest_path, txn.src_path)
+                        
+                        # Update DB Record
+                        rec = session.exec(select(FileRecord).where(FileRecord.path == txn.dest_path)).first()
+                        if rec:
+                            rec.path = txn.src_path
+                            session.add(rec)
+                        
+                        # Delete the transaction log (history rewritten)
+                        session.delete(txn)
+                        restored += 1
+                    except Exception as e:
+                        logging.error(f"Undo Failed for {txn.dest_path}: {e}")
+            
+            session.commit()
+        return restored
+
+    def _create_visual_stack(self, files: list[FileRecord], leader: FileRecord):
+        # Folder Name: "Foly_wedding_Set" based on "Foly_wedding.jpg"
+        base_name = Path(leader.filename).stem
+        parent_dir = Path(leader.path).parent
+        folder_name = f"{base_name}_Set"
+        stack_dir = parent_dir / folder_name
+        
+        if not stack_dir.exists():
+            stack_dir.mkdir()
+            
+        for f in files:
+            # Don't move if it's already in a folder with that name (idempotency)
+            if stack_dir.name in f.path: continue
+            self._move_file(f, stack_dir, "VISUAL_STACK")
 
     def _move_file(self, record: FileRecord, dest_folder: Path, action: str):
-        """
-        Safe Move with DB Logging.
-        """
         src = Path(record.path)
         dest = dest_folder / record.filename
         
-        # Avoid overwriting
         if dest.exists():
             timestamp = int(time.time())
             dest = dest_folder / f"{dest.stem}_{timestamp}{dest.suffix}"
 
         try:
-            # 1. Physical Move
             shutil.move(str(src), str(dest))
             
-            # 2. Log Transaction (The Undo Receipt)
             with Session(engine) as session:
                 txn = FileTransaction(
                     mission_id=self.mission_id,
@@ -72,13 +117,10 @@ class Organizer:
                 )
                 session.add(txn)
                 
-                # 3. Update File Record
-                record.path = str(dest)
-                session.add(record)
-                
+                db_rec = session.get(FileRecord, record.id)
+                db_rec.path = str(dest)
+                session.add(db_rec)
                 session.commit()
                 
-            logging.info(f"✅ Moved: {src.name} -> {dest_folder.name}")
-            
         except Exception as e:
-            logging.error(f"❌ Failed to move {src}: {e}")
+            logging.error(f"Move Error: {e}")
