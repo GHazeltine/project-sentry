@@ -1,74 +1,91 @@
 import os
 import time
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from sqlmodel import Session, select
+from app.database.models import engine, FileRecord
 
 class Reporter:
-    """
-    Generates a professional PDF 'Certificate of Sanitation'
-    for clients, detailing the cleaning operation.
-    """
-    
-    def __init__(self, export_dir="/app/reports"):
-        self.export_dir = export_dir
-        if not os.path.exists(self.export_dir):
-            os.makedirs(self.export_dir)
+    def __init__(self):
+        self.report_dir = "/app/reports"
+        os.makedirs(self.report_dir, exist_ok=True)
 
-    def generate_report(self, mission_id, total_scanned, duplicates_removed, ghost_folders, target_paths):
-        filename = f"Sovereign_Sanitation_Report_{mission_id}.pdf"
-        filepath = os.path.join(self.export_dir, filename)
-        
-        c = canvas.Canvas(filepath, pagesize=letter)
-        width, height = letter
-        
-        # --- HEADER ---
-        # Draw a dark header bar
-        c.setFillColor(colors.black)
-        c.rect(0, height - 1.5*inch, width, 1.5*inch, fill=1)
-        
-        # Company Name (White text)
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 24)
-        c.drawString(0.5*inch, height - 0.8*inch, "SOVEREIGN SILICON")
-        
-        c.setFont("Helvetica", 12)
-        c.drawString(0.5*inch, height - 1.1*inch, "Cybersecurity & Data Sanitation Services")
+    def generate_report(self, mission_id, total_scanned, duplicates_removed, ghost_folders, target_paths, vault_info=None):
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"SENTRY_REPORT_{timestamp}.pdf"
+        filepath = os.path.join(self.report_dir, filename)
 
-        # --- BODY ---
-        c.setFillColor(colors.black)
+        doc = SimpleDocTemplate(filepath, pagesize=letter)
+        styles = getSampleStyleSheet()
         
-        # Title
-        c.setFont("Helvetica-Bold", 18)
-        c.drawString(0.5*inch, height - 2.5*inch, "CERTIFICATE OF SANITATION")
-        
-        # Metadata
-        c.setFont("Helvetica", 12)
-        y = height - 3.0*inch
-        c.drawString(0.5*inch, y, f"Mission ID: {mission_id}")
-        c.drawString(0.5*inch, y - 20, f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # --- STATS BOX ---
-        # Draw a gray background box for stats
-        c.setFillColor(colors.lightgrey)
-        c.rect(0.5*inch, y - 2.5*inch, width - 1*inch, 1.5*inch, fill=1, stroke=0)
-        
-        c.setFillColor(colors.black)
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(0.7*inch, y - 1.0*inch, "OPERATIONAL SUMMARY")
-        
-        c.setFont("Courier", 12)
-        c.drawString(0.7*inch, y - 1.4*inch, f"Files Scanned:       {total_scanned}")
-        c.drawString(0.7*inch, y - 1.6*inch, f"Duplicates Removed:  {duplicates_removed}")
-        c.drawString(0.7*inch, y - 1.8*inch, f"Ghost Folders Purged: {ghost_folders}")
-        c.drawString(0.7*inch, y - 2.0*inch, f"Target Drives:       {', '.join(target_paths)}")
+        table_text_style = ParagraphStyle('TableText', parent=styles['Normal'], fontSize=8, fontName='Courier')
+        elements = []
 
-        # --- FOOTER ---
-        c.setFont("Helvetica-Oblique", 10)
-        c.drawString(0.5*inch, 1*inch, "This document certifies that the storage media listed above has been processed")
-        c.drawString(0.5*inch, 0.85*inch, "using Sovereign Silicon's proprietary cryptographic deduplication engine.")
-        c.drawString(0.5*inch, 0.5*inch, "https://sovereignsilicon.com")
+        # TITLE
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, spaceAfter=20)
+        elements.append(Paragraph("SENTRY COMMAND // SANITATION REPORT", title_style))
+        elements.append(Spacer(1, 12))
 
-        c.save()
+        # STATS
+        target_str = ", ".join(target_paths)
+        data = [
+            ["METRIC", "VALUE"],
+            ["Mission ID", str(mission_id)],
+            ["Total Files Scanned", str(total_scanned)],
+            ["Duplicates Deleted", str(duplicates_removed)],
+            ["Visual Groups Created", str(ghost_folders)],
+            ["Target Drives", Paragraph(target_str, table_text_style)]
+        ]
+        t = Table(data, colWidths=[150, 350])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (1, 0), colors.black),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.gold),
+            ('FONTNAME', (0, 0), (-1, 0), 'Courier-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 25))
+
+        # VAULT SECTION
+        if vault_info and vault_info['count'] > 0:
+            elements.append(Paragraph("🛡️ CONFIDENTIAL ASSETS SECURED", styles['Heading2']))
+            warning = "SENSITIVE FILES MOVED TO SECURE VAULT. GOOGLE PHOTOS SYNC DISABLED (.nomedia)."
+            elements.append(Paragraph(warning, ParagraphStyle('Warn', parent=styles['Normal'], textColor=colors.red)))
+            elements.append(Spacer(1, 10))
+            
+            vault_data = [
+                ["VAULT LOCATION", Paragraph(vault_info['path'], table_text_style)],
+                ["FILE COUNT", str(vault_info['count'])],
+                ["ARCHIVE PASSWORD", Paragraph(vault_info['password'], table_text_style)]
+            ]
+            vt = Table(vault_data, colWidths=[120, 380])
+            vt.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.darkred),
+                ('TEXTCOLOR', (0, 0), (0, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTNAME', (0, 0), (-1, -1), 'Courier-Bold'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(vt)
+            elements.append(Spacer(1, 20))
+
+        # VISUAL GROUPS
+        elements.append(Paragraph("EVIDENCE: VISUAL GROUPS (EDITS PRESERVED)", styles['Heading2']))
+        with Session(engine) as session:
+            grouped = session.exec(select(FileRecord).where(FileRecord.mission_id == mission_id, FileRecord.tag == "GROUPED").limit(40)).all()
+            if not grouped:
+                elements.append(Paragraph("No visual groups detected.", styles['Normal']))
+            else:
+                group_data = [["Filename", "Location"]]
+                for f in grouped:
+                    group_data.append([Paragraph(f.filename[:35], table_text_style), Paragraph(f.path, table_text_style)])
+                
+                gt = Table(group_data, colWidths=[150, 350])
+                gt.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+                elements.append(gt)
+
+        doc.build(elements)
         return filepath

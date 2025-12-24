@@ -1,11 +1,13 @@
 # --- CORE FRAMEWORK ---
 fastapi
 uvicorn
-python-multipart
 jinja2
+python-multipart
 requests
 sqlmodel
+hailo_platform
 psycopg2-binary
+reportlab
 
 # --- IMAGE PROCESSING ---
 pillow

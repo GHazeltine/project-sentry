@@ -205,3 +205,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+--- Python & Virtual Env ---
+pycache/ *.pyc .venv/ env/
+
+--- Environment Secrets (CRITICAL) ---
+.env
+
+--- Database Storage ---
+sentry_pg_data/ *.db *.sqlite *.sqlite3
+
+--- Project Sentry Artifacts ---
+reports/ SENTRY_BACKUPS/ SENTRY_RESCUE_*.zip
+
+--- Test Lab & Vaults ---
+TEST_LAB/ SENTRY_TEST/ SENTRY_SECURE_VAULT_*.zip TARGET_INBOX/ GOLD_MUSEUM/
+
+--- IDE Settings ---
+.vscode/ .idea/

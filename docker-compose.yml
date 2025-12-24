@@ -1,57 +1,40 @@
-version: '3.8'
-
 services:
-  # 1. THE BRAIN (PostgreSQL Database)
-  sentry-db:
-    image: postgres:15-alpine
-    container_name: sentry-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=sentry_admin
-      - POSTGRES_PASSWORD=sentry_secure_pass
-      - POSTGRES_DB=sentry_v3
-    volumes:
-      - sentry_pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentry_admin -d sentry_v3"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # 2. THE BODY (Sentry Core)
+  # 1. THE BRAIN (Sentry App)
   sentry-core:
     build: .
-    container_name: sentry-core
-    restart: unless-stopped
-    
-    # HARDWARE ACCESS (For Drives & Hailo)
+    image: sentry-core:v4
+    container_name: sentry_core_v4
     privileged: true
-    cap_add:
-      - SYS_ADMIN
-      - DAC_READ_SEARCH
-    security_opt:
-      - apparmor:unconfined
-      
+    restart: always
     ports:
       - "8000:8000"
-      
-    depends_on:
-      sentry-db:
-        condition: service_healthy
-      
-    environment:
-      - SENTRY_USER=${SENTRY_USER:-admin}
-      - SENTRY_PASS=${SENTRY_PASS:-change-this-now}
-      # CONNECT TO THE NEW DB CONTAINER
-      - DATABASE_URL=postgresql://sentry_admin:sentry_secure_pass@sentry-db:5432/sentry_v3
-      
     volumes:
       - .:/app
-      - /mnt/sentry:/mnt/sentry:shared
-      - /media:/media:rslave
-      - /mnt:/mnt:rslave
-      - /run/media:/run/media:rslave
-      - /:/host_fs:rslave
+      - /:/host_fs                     # Map Entire Drive for "God Mode"
+      - /media:/media                  # USB Drives
+      - /mnt:/mnt                      # Network Drives
+      - /dev:/dev                      # Device Access
+    devices:
+      # - /dev/hailo0:/dev/hailo0      # <--- UNCOMMENT ON PI ONLY
+    environment:
+      - DATABASE_URL=postgresql://sentry_admin:sentry_secure_pass@sentry-db:5432/sentry_v3
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - sentry-db
+
+  # 2. THE MEMORY (Enterprise Database)
+  sentry-db:
+    image: postgres:15-alpine
+    container_name: sentry_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: sentry_admin
+      POSTGRES_PASSWORD: sentry_secure_pass
+      POSTGRES_DB: sentry_v3
+    volumes:
+      - sentry_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
 volumes:
   sentry_pg_data:
